@@ -80,6 +80,8 @@ def get_limit_intervals(start_ts, end_ts, interval_ms, limit):
 
 
 def reshape_list(lst, max_els):
+    # Transform lst into a list of lists. Each sublist has length < max_els.
+    # Elements order is preserved.
     if len(lst) <= max_els:
         return [lst]
     else:
@@ -93,14 +95,16 @@ def reshape_list(lst, max_els):
 
 async def get_candles(start_ts, end_ts, client, symbol, interval, limit):
     """
-        :param symbol: Binance symbol for example BTCUSDT
-        :type interval: str
-        :param interval: Binance interval string 1m, 3m, 5m, 15m, 30m, 1h, 2h, 4h, 6h, 8h, 12h, 1d, 3d, 1w
-        :type interval: str
         :param start_ts: starting time stamp, it seems binance has data from ['2017-08-17, 04:00:00']
         :type start_ts: int in milliseconds
         :param end_ts: ending time stamp, if None set to Now
         :type end_ts: int in milliseconds
+        :param symbol: Binance symbol for example BTCUSDT
+        :type symbol: string
+        :type client: binance.client
+        :param client: created with binance.client library
+        :param interval: Binance interval string 1m, 3m, 5m, 15m, 30m, 1h, 2h, 4h, 6h, 8h, 12h, 1d, 3d, 1w
+        :type interval: str
         :param limit: limit of candles returned per one api request
         :type limit: int
         writes candles or klines for a chosen symbol into a database
@@ -160,19 +164,18 @@ async def get_candles(start_ts, end_ts, client, symbol, interval, limit):
             # insert "time_loaded" column in temp_data list of lists, set it to now()
             time_loaded = int(time.time() * 1000)
             temp_data = [k + [time_loaded] for k in temp_data]
-
             start_temp = temp_data[0][0]
             end_temp = temp_data[-1][0]
-
             print(f'fetched {len(temp_data)} candles from {start_temp} {ts_to_date(start_temp)} included '
                   f'to {end_temp} {ts_to_date(end_temp)} included')
     return temp_data
 
 
 async def write_candles(start_ts, end_ts, client, symbol, interval, limit, conn_db, table_name):
+    # write candles into a database
     temp_data = await get_candles(start_ts, end_ts, client, symbol, interval, limit)
+    # api weight is binance api load limit https://www.binance.com/ru/support/faq/360004492232
     api_weight = client.response.headers['x-mbx-used-weight-1m']
-    print(f'api_weight: {api_weight}')
 
     if temp_data is None or not len(temp_data):
         return False
@@ -187,12 +190,14 @@ async def write_candles(start_ts, end_ts, client, symbol, interval, limit, conn_
 
 
 async def update_candles_ms(symbol: str, interval: str, start_ts=None, end_ts=None, limit=500, max_coroutines=50):
+    # update candles in a database
     interval_ms = interval_to_milliseconds(interval)
     if interval_ms is None:
         logger.error('get_candles_ms got invalid interval,expected '
                      '1m, 3m, 5m, 15m, 30m, 1h, 2h, 4h, 6h, 8h, 12h, 1d, 3d, 1w')
         return None
 
+    # check if requested time period is longer then "candle width"
     if start_ts is not None and end_ts is not None:
         if end_ts - start_ts < interval_ms:
             logger.warning('interval between requested start an end dates < chart interval')
@@ -215,16 +220,18 @@ async def update_candles_ms(symbol: str, interval: str, start_ts=None, end_ts=No
         logger.debug(f'not specified end_ts, end ts is set to now: {end_ts}, {ts_to_date(end_ts)}')
     else:
         logger.debug(f'end_ts specified: {end_ts}, {ts_to_date(end_ts)}')
+    # table names for each symbol and interval are created this way:
     table_name = f'{symbol}{interval}Hist'
+
     if not conn_db.table_in_db(table_name):  # if there are no tables with table_name in our database
         logger.debug(f'not found table {table_name}, creating one')
         conn_db.table_create(table_name)
         if start_ts is None:
             start_ts = 1502668800000
             logger.debug(f'start_ts not specified, new table, setting to 1502668800000, {ts_to_date(1502668800000)}')
+
     else:  # table present in database
         row_count = conn_db.count_rows(table_name)
-
         if row_count < 1:  # table is empty
             logger.debug('update_candles_ms: found an empty table to wright in, nice!')
             if start_ts is None:
@@ -252,13 +259,15 @@ async def update_candles_ms(symbol: str, interval: str, start_ts=None, end_ts=No
                     logger.debug(f'start_ts <= last_entry or start_ts > last_entry + interval_ms'
                                  f', setting to {start_ts}, {ts_to_date(start_ts)}')
 
-
-
     # create the Binance client, no need for api key
-    # client = Client("", "")
     client = await AsyncClient.create()
 
+    # splits time from start_ts to end_ts into intervals
+    # like[[start, end], [start2, end2], ...], end - start = interval_ms*limit
     intervals = get_limit_intervals(start_ts, end_ts, interval_ms, limit)
+
+    # Transform lst into a list of lists. Each sublist has length < max_els (max_coroutines).
+    # Elements order is preserved.
     resh_intervals = reshape_list(intervals, max_coroutines)
 
     for bunch in resh_intervals:
@@ -271,8 +280,10 @@ async def update_candles_ms(symbol: str, interval: str, start_ts=None, end_ts=No
         api_weight = client.response.headers['x-mbx-used-weight-1m']
 
         if int(api_weight) > 300:
-            logger.warning(f'reaching high api load, current api_weight: {api_weight}, max = 1200, sleep for 3 sec')
-            time.sleep(3)
+            sleep_time = int(20*int(api_weight)/1200)
+            logger.warning(f'reaching high api load, current api_weight:'
+                           f' {api_weight}, max = 1200, sleep for {sleep_time} sec')
+            time.sleep(sleep_time)
         await asyncio.gather(*tasks)
 
     conn_db.close_connection()

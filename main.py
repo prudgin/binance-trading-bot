@@ -8,7 +8,7 @@ import asyncio
 logging.basicConfig(
     # filename='get_hist_data.log',
     format="%(asctime)s %(levelname)s:%(name)s: %(message)s",
-    level=logging.DEBUG,
+    level=logging.WARNING,
     datefmt="%H:%M:%S",
     stream=sys.stderr
 )
@@ -27,10 +27,10 @@ if __name__ == '__main__':
     conn.connect()
     #print(conn.list_databases())
 
-    conn.table_delete('BTCUSDT1dHist')
+    conn.table_delete('BTCUSDT1mHist')
     conn.close_connection()
     #update_candles_ms('BTCUSDT', '1d', 1502928000000)#, 1502928000000 + 86400000*7, limit = 7)
-    asyncio.run(update_candles_ms('BTCUSDT', '1d', 1502928000000))
+    asyncio.run(update_candles_ms('BTCUSDT', '1m', 1502928000000))
 
 #604800000
 #86400000

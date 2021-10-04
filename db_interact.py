@@ -7,6 +7,7 @@ import exceptions
 
 logger = logging.getLogger(__name__)
 
+# SQL table structure that will be created
 candle_table_structure = [
     ['id', 'INT', 'AUTO_INCREMENT PRIMARY KEY'],
     ['open_time', 'BIGINT', 'NOT NULL UNIQUE'],
@@ -25,6 +26,7 @@ candle_table_structure = [
 ]
 
 
+# format data to be written into the table
 def adapt_data(data):
     adapted = [[j[0],  # open_time
                 Decimal(j[1]),  # open
@@ -42,6 +44,7 @@ def adapt_data(data):
     return adapted
 
 
+# this class is used to connect to a MySQL database
 class ConnectionDB:
     def __init__(self, host, user, password, database=None):
         self.host = host
@@ -118,13 +121,19 @@ class ConnectionDB:
                 logger.error(f'could not create table {table_name}, {err}')
 
     def table_delete(self, table_name):
-        try:
-            delete_table_query = f'DROP TABLE {table_name}'
-            self.conn_cursor.execute(delete_table_query)
-            self.conn.commit()
-            logger.debug(f'deleted table {table_name}')
-        except Error as err:
-            logger.error(f'could not delete table {table_name}, no such table {err}')
+        if self.table_in_db(table_name):
+            try:
+                delete_table_query = f'DROP TABLE {table_name}'
+                self.conn_cursor.execute(delete_table_query)
+                self.conn.commit()
+                logger.debug(f'deleted table {table_name}')
+
+            except Error as err:
+                err_message = 'unknown error while deleting a table'
+                logger.error(f'{err_message} {self.database}; {err}')
+                raise exceptions.SQLError(err, err_message)
+        else:
+            logger.error(f'could not delete table {table_name}, no such table')
 
     def table_in_db(self, table_name):
         show_req = f'SHOW TABLES LIKE \'{table_name}\''
@@ -201,47 +210,6 @@ class ConnectionDB:
             err_message = 'error writing data into table'
             logger.error(f'{err_message} {table_name}, {err}')
             raise exceptions.SQLError(err, err_message)
-
-    def check_table(self, table_name, time_col: str, time_int: int, start_time=0):
-        """
-        check if table has no missing candles in column named time_col
-        :param time_int: time interval in milliseconds
-        :type time_int: int
-        :param time_col: name of column with candle open times
-        :type time_int: str
-        """
-
-        count_req = f'SELECT COUNT({time_col}) FROM {table_name} WHERE {time_col} >= {start_time}'
-        self.conn_cursor.execute(count_req)
-        row_count = self.conn_cursor.fetchone()[0]
-        if row_count < 2:
-            logger.warning('check_table() found less than 2 rows in a table')
-        else:
-            # first entry
-            first_req = f'SELECT {time_col} from {table_name} ORDER BY {time_col} LIMIT 1'
-            self.conn_cursor.execute(first_req)
-            first_entry = self.conn_cursor.fetchone()[0]
-            sel_req = f'SELECT {time_col} from {table_name} WHERE {time_col} >= {start_time} ORDER BY {time_col}'
-            self.conn_cursor.execute(sel_req)
-            prev_fetch = self.conn_cursor.fetchone()[0]
-            # if we start checking from empty candle in the middle, data is corrupt
-            # if we start check before the first candle avialable, it is ok
-            if prev_fetch > start_time:
-                if start_time >= first_entry:
-                    print('in the middle!')
-                    self.conn_cursor.reset()
-                    return False
-            r = 1
-            while r < row_count:
-                r += 1
-                fetch = self.conn_cursor.fetchone()[0]
-                if (fetch - prev_fetch) == time_int:
-                    prev_fetch = fetch
-                else:
-                    self.conn_cursor.reset()
-                    return False
-
-        return True
 
 
 if __name__ == '__main__':
