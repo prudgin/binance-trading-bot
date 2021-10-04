@@ -4,6 +4,7 @@ from get_hist_data import update_candles_ms
 import logging
 import sys
 import asyncio
+import spooky
 
 logging.basicConfig(
     # filename='get_hist_data.log',
@@ -18,19 +19,19 @@ logger = logging.getLogger(__name__)
 if __name__ == '__main__':
     from db_interact import ConnectionDB
 
-    conn = ConnectionDB(host='localhost',
-                        user='trading',
-                        password='spooky45',
-                        database='hist_data')
+    conn = ConnectionDB(host=spooky.creds['host'],
+                        user=spooky.creds['user'],
+                        password=spooky.creds['password'],
+                        database=spooky.creds['database'])
 
     #print(conn)
     conn.connect()
     #print(conn.list_databases())
 
-    conn.table_delete('BTCUSDT1mHist')
+    conn.table_delete('BTCUSDT1dHist')
     conn.close_connection()
     #update_candles_ms('BTCUSDT', '1d', 1502928000000)#, 1502928000000 + 86400000*7, limit = 7)
-    asyncio.run(update_candles_ms('BTCUSDT', '1m', 1502928000000))
+    asyncio.run(update_candles_ms('BTCUSDT', '1d', 1502928000000))
 
 #604800000
 #86400000

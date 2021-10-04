@@ -8,6 +8,7 @@ import pytz
 from datetime import datetime
 import exceptions
 import asyncio
+import spooky
 
 logger = logging.getLogger(__name__)
 
@@ -204,10 +205,10 @@ async def update_candles_ms(symbol: str, interval: str, start_ts=None, end_ts=No
             return None
 
     # connecting to our database in order to store values
-    conn_db = ConnectionDB(host='localhost',
-                           user='trading',
-                           password='spooky45',
-                           database='hist_data')
+    conn = ConnectionDB(host=spooky.creds['host'],
+                        user=spooky.creds['user'],
+                        password=spooky.creds['password'],
+                        database=spooky.creds['database'])
     try:
         conn_db.connect()
     except exceptions.SQLError:
