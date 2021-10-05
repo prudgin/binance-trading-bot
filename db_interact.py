@@ -105,7 +105,7 @@ class ConnectionDB:
 
     def table_create(self, table_name):
         if not self.connected:
-            logger.error('cannot create table, not connected to a database, run .connect()first')
+            logger.error('cannot create table, not connected to a database, run .connect() first')
             return None
         else:
             try:
@@ -166,6 +166,19 @@ class ConnectionDB:
         except Error as err:
             logger.error(f'failed to count_rows, {err}')
             return None
+
+    def add_column(self, table_name, column_name, col_type='', not_null='', unique=''):
+        add_req = f"""
+                ALTER TABLE {table_name}
+                ADD COLUMN {column_name} {col_type} {not_null} {unique}
+                """
+        add_req = ' '.join(add_req.split())
+        try:
+            self.conn_cursor.execute(add_req)
+        except Error as err:
+            err_message = 'failed to insert column'
+            logger.error(f'{err_message}, {err}')
+            raise exceptions.SQLError(err, err_message)
 
     def get_start_end(self, table_name):
         # get the timestamp of the first and the last entry in existing table
