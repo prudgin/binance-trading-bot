@@ -28,10 +28,10 @@ if __name__ == '__main__':
     conn.connect()
     #print(conn.list_databases())
 
-    conn.table_delete('BTCUSDT1dHist')
+    conn.table_delete('BTCUSDT1wHist')
     conn.close_connection()
     #update_candles_ms('BTCUSDT', '1d', 1502928000000)#, 1502928000000 + 86400000*7, limit = 7)
-    asyncio.run(update_candles_ms('BTCUSDT', '1d', 1502928000000))
+    asyncio.run(update_candles_ms('BTCUSDT', '1w', 1502928000000))
 
 #604800000
 #86400000
