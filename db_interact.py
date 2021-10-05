@@ -1,4 +1,4 @@
-from mysql.connector import connect, Error
+from mysql.connector import connect, Error, errors
 from getpass import getpass
 import logging
 import sys
@@ -175,6 +175,9 @@ class ConnectionDB:
         add_req = ' '.join(add_req.split())
         try:
             self.conn_cursor.execute(add_req)
+        except errors.ProgrammingError as err:
+            if 'Duplicate column name' in str(err):
+                logger.debug('triedd to insert a duplicate column')
         except Error as err:
             err_message = 'failed to insert column'
             logger.error(f'{err_message}, {err}')

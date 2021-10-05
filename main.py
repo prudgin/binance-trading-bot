@@ -10,7 +10,7 @@ import exceptions
 logging.basicConfig(
     # filename='get_hist_data.log',
     format="%(asctime)s %(levelname)s:%(name)s: %(message)s",
-    level=logging.WARNING,
+    level=logging.DEBUG,
     datefmt="%H:%M:%S",
     stream=sys.stderr
 )
@@ -29,11 +29,7 @@ if __name__ == '__main__':
     conn.connect()
     #print(conn.list_databases())
 
-    #conn.table_delete('BTCUSDT1wHist')
-    try:
-        conn.add_column('BTCUSDT1wHist', 'checked', 'INT', 'NOT NULL')
-    except exceptions.SQLError as err:
-        print(err)
+    conn.table_delete('BTCUSDT1wHist')
 
     conn.close_connection()
 
