@@ -68,8 +68,10 @@ def interval_to_milliseconds(interval):
 
 
 def get_limit_intervals(start_ts, end_ts, interval_ms, limit):
-    # splits time from start_ts to end_ts into intervals
+    # splits time from start_ts to end_ts into intervals, each interval is for one api request
     # like[[start, end], [start2, end2], ...], end - start = interval_ms*limit
+    # limit = number of candles fetched per 1 API request
+    # interval_ms = candle "width"
     length = interval_ms * limit
     num_intervals = (end_ts - start_ts) // length
     leftover = (end_ts - start_ts) % length
@@ -158,7 +160,9 @@ async def get_candles(start_ts, end_ts, client, symbol, interval, limit):
     else:
 
         if not len(temp_data):
-            logger.error('got empty response from client.get_klines()')
+            logger.error(f'got empty response from client.get_klines(),\n'
+                         f'expected candles from {start_ts} : {ts_to_date(start_ts)}'
+                         f' to {end_ts} : {ts_to_date(end_ts)}')
             return []
 
         else:
@@ -191,6 +195,10 @@ async def write_candles(start_ts, end_ts, client, symbol, interval, limit, conn_
 
 
 async def update_candles_ms(symbol: str, interval: str, start_ts=None, end_ts=None, limit=500, max_coroutines=50):
+
+    # table names for each symbol and interval are created this way:
+    table_name = f'{symbol}{interval}Hist'
+
     # update candles in a database
     interval_ms = interval_to_milliseconds(interval)
     if interval_ms is None:
@@ -198,11 +206,7 @@ async def update_candles_ms(symbol: str, interval: str, start_ts=None, end_ts=No
                      '1m, 3m, 5m, 15m, 30m, 1h, 2h, 4h, 6h, 8h, 12h, 1d, 3d, 1w')
         return None
 
-    # check if requested time period is longer then "candle width"
-    if start_ts is not None and end_ts is not None:
-        if end_ts - start_ts < interval_ms:
-            logger.warning('interval between requested start an end dates < chart interval')
-            return None
+
 
     # connecting to our database in order to store values
     conn_db = ConnectionDB(host=spooky.creds['host'],
@@ -221,8 +225,7 @@ async def update_candles_ms(symbol: str, interval: str, start_ts=None, end_ts=No
         logger.debug(f'not specified end_ts, end ts is set to now: {end_ts}, {ts_to_date(end_ts)}')
     else:
         logger.debug(f'end_ts specified: {end_ts}, {ts_to_date(end_ts)}')
-    # table names for each symbol and interval are created this way:
-    table_name = f'{symbol}{interval}Hist'
+
 
     if not conn_db.table_in_db(table_name):  # if there are no tables with table_name in our database
         logger.debug(f'not found table {table_name}, creating one')
@@ -260,6 +263,12 @@ async def update_candles_ms(symbol: str, interval: str, start_ts=None, end_ts=No
                     logger.debug(f'start_ts <= last_entry or start_ts > last_entry + interval_ms'
                                  f', setting to {start_ts}, {ts_to_date(start_ts)}')
 
+    # check if requested time period is longer then "candle width"
+    if start_ts is not None and end_ts is not None:
+        if end_ts - start_ts < interval_ms:
+            logger.warning('interval between requested start an end dates < chart interval')
+            return None
+
     # create the Binance client, no need for api key
     client = await AsyncClient.create()
 
@@ -281,7 +290,7 @@ async def update_candles_ms(symbol: str, interval: str, start_ts=None, end_ts=No
         api_weight = client.response.headers['x-mbx-used-weight-1m']
 
         if int(api_weight) > 300:
-            sleep_time = int(20*int(api_weight)/1200)
+            sleep_time = int(20*int(api_weight)**2/1200**2)
             logger.warning(f'reaching high api load, current api_weight:'
                            f' {api_weight}, max = 1200, sleep for {sleep_time} sec')
             time.sleep(sleep_time)

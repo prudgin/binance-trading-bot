@@ -177,7 +177,7 @@ class ConnectionDB:
             self.conn_cursor.execute(add_req)
         except errors.ProgrammingError as err:
             if 'Duplicate column name' in str(err):
-                logger.debug('triedd to insert a duplicate column')
+                logger.debug('tried to insert a duplicate column')
         except Error as err:
             err_message = 'failed to insert column'
             logger.error(f'{err_message}, {err}')
@@ -224,6 +224,42 @@ class ConnectionDB:
             self.conn.commit()
         except Error as err:
             err_message = 'error writing data into table'
+            logger.error(f'{err_message} {table_name}, {err}')
+            raise exceptions.SQLError(err, err_message)
+
+
+    def check_missing(self, table_name, time_col_name, step):
+        try:
+            self.conn_cursor.execute(f"""
+    SELECT
+     CAST((z.expected) AS UNSIGNED INTEGER), 
+     IF(z.got-{step}>z.expected, CAST( (z.got-{step}) AS UNSIGNED INTEGER),
+                                 CAST((z.expected) AS UNSIGNED INTEGER)) AS missing
+    FROM (
+    SELECT
+    
+      /* (3) increace @rownum by step from row to row */
+      @rownum:=@rownum+{step} AS expected,
+      
+      /* (4) @rownum should be equal to time_col_name unless we find a gap,
+             when we do, overwrite @rownum with gap end and continue*/
+      IF(@rownum={time_col_name}, 0, @rownum:={time_col_name}) AS got
+    FROM
+      /* (1) set variable @rownum equal to the first entry in sorted time_col_name */
+      (SELECT @rownum:=(SELECT {time_col_name} from {table_name} ORDER BY {time_col_name} LIMIT 1)-{step}) AS a
+      
+      /* (2) join a column populated with variable @rownum, for now it doesn't change from row to row */
+      JOIN
+      {table_name}
+      ORDER BY {time_col_name}
+      ) AS z
+    WHERE z.got!=0;
+    """)
+            fetch = self.conn_cursor.fetchall()
+            self.conn_cursor.reset()
+            return fetch
+        except Error as err:
+            err_message = 'error searching for gaps in table'
             logger.error(f'{err_message} {table_name}, {err}')
             raise exceptions.SQLError(err, err_message)
 

@@ -1,16 +1,17 @@
 # Press Shift+F10 to execute it or replace it with your code.
 # Press Double Shift to search everywhere for classes, files, tool windows, actions, and settings.
-from get_hist_data import update_candles_ms
+from get_hist_data import update_candles_ms, interval_to_milliseconds, ts_to_date
 import logging
 import sys
 import asyncio
 import spooky
 import exceptions
+from check_table import check_table
 
 logging.basicConfig(
     # filename='get_hist_data.log',
     format="%(asctime)s %(levelname)s:%(name)s: %(message)s",
-    level=logging.DEBUG,
+    level=logging.WARNING,
     datefmt="%H:%M:%S",
     stream=sys.stderr
 )
@@ -20,22 +21,25 @@ logger = logging.getLogger(__name__)
 if __name__ == '__main__':
     from db_interact import ConnectionDB
 
-    conn = ConnectionDB(host=spooky.creds['host'],
+    conn_db = ConnectionDB(host=spooky.creds['host'],
                         user=spooky.creds['user'],
                         password=spooky.creds['password'],
                         database=spooky.creds['database'])
 
     #print(conn)
-    conn.connect()
-    #print(conn.list_databases())
+    #conn_db.connect()
+    #print(conn_db.list_databases())
+    #conn_db.table_delete('BTCUSDT1mHist')
+    #conn_db.close_connection()
 
-    conn.table_delete('BTCUSDT1wHist')
 
-    conn.close_connection()
-
-    #update_candles_ms('BTCUSDT', '1d', 1502928000000)#, 1502928000000 + 86400000*7, limit = 7)
-    asyncio.run(update_candles_ms('BTCUSDT', '1w', 1502928000000))
-    print('!!')
+    asyncio.run(update_candles_ms('BTCUSDT', '1m', end_ts=1515928000000))
+                                  #1502942400000+interval_to_milliseconds('1m')*500))1504742340000
+    print(check_table('BTCUSDT1mHist'))
+    conn_db.connect()
+    st_en = conn_db.get_start_end('BTCUSDT1mHist')
+    conn_db.close_connection()
+    #1502942400000: 17 - Aug - 2017 04: 00:00, 1515927960000: 14 - Jan - 2018 11: 06:00
 
 #604800000
 #86400000

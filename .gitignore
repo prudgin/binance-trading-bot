@@ -1,4 +1,2 @@
 .idea/*
-__pycache__/db_interact.cpython-39.pyc
-__pycache__/exceptions.cpython-39.pyc
-__pycache__/get_hist_data.cpython-39.pyc
+__pycache__/*
