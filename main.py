@@ -6,7 +6,7 @@ import sys
 import asyncio
 import spooky
 import exceptions
-from check_table import check_table, round_timings, get_gaps
+from check_table import round_timings, get_gaps
 
 logging.basicConfig(
     # filename='get_hist_data.log',
@@ -30,17 +30,15 @@ if __name__ == '__main__':
     conn_db.connect()
 
     #print(conn_db.list_databases())
-    conn_db.table_delete('BTCUSDT1mHist')
+    #conn_db.table_delete('BTCUSDT1mHist')
     conn_db.close_connection()
 
 
-    asyncio.run(update_candles_ms('BTCUSDT', '1m', start_ts=1513591320000, end_ts=1515038760000)) #1519862400000
+    asyncio.run(update_candles_ms('BTCUSDT', '1m', start_ts=1502942760000, end_ts=1515038760000)) #1519862400000
 
     round_timings('BTCUSDT1mHist', '1m')
     print('get_gaps:')
-    gaps = get_gaps('BTCUSDT1mHist', '1m', start_ts=1513591320000, end_ts=1515038760000)
-    print(gaps)
-    check_table('BTCUSDT1mHist', '1m')
+    gaps = get_gaps('BTCUSDT1mHist', '1m', start_ts=1502942760000, end_ts=1515038760000)
 
     #1502942400000: 17 - Aug - 2017 04: 00:00, 1515927960000: 14 - Jan - 2018 11: 06:00
 

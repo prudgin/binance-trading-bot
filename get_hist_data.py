@@ -197,6 +197,8 @@ async def write_candles(start_ts, end_ts, client, symbol, interval, limit, conn_
             return 0
 
 
+
+
 async def update_candles_ms(symbol: str, interval: str, start_ts=None, end_ts=None, limit=500, max_coroutines=50):
 
     # table names for each symbol and interval are created this way:
@@ -266,7 +268,7 @@ async def update_candles_ms(symbol: str, interval: str, start_ts=None, end_ts=No
             # more overlapping options should be taken care of here
             else:
                 if start_ts <= last_entry or start_ts > last_entry + interval_ms:
-                    start_ts = last_entry + interval_ms
+                    start_ts = last_entry + 1
                     logger.debug(f'start_ts <= last_entry or start_ts > last_entry + interval_ms'
                                  f', setting to {start_ts}, {ts_to_date(start_ts)}')
 
@@ -310,8 +312,11 @@ async def update_candles_ms(symbol: str, interval: str, start_ts=None, end_ts=No
     print('update_candles_ms summary:')
     print(f'fetched {candles_total} candles')
     first_written, last_written, count_written = conn_db.get_start_end_later_than(table_name, last_entry_added_at)
-    print(f'wrote {count_written} candles starting from {first_written} {ts_to_date(first_written)} to '
-          f'{last_written} {ts_to_date(last_written)}')
+    if first_written and last_written:
+        print(f'wrote {count_written} candles starting from {first_written} {ts_to_date(first_written)} to '
+              f'{last_written} {ts_to_date(last_written)}')
+    else:
+        print(f'wrote {count_written} candles')
 
     conn_db.close_connection()
     await client.close_connection()

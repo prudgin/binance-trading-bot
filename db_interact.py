@@ -228,8 +228,19 @@ class ConnectionDB:
         # get the timestamp of the first and the last entry in existing table added after "later_than"
         # also count entries
         first_entry, last_entry, count = None, None, 0
-        if self.count_rows(table_name) < 1:  # if table empty
-            logger.error(f'tried to get first and last entry from an empty table {table_name}')
+
+        try:
+            count_req = f'SELECT COUNT(open_time) FROM {table_name} WHERE time_loaded > {later_than}'
+            self.conn_cursor.execute(count_req)
+            row_count_later = self.conn_cursor.fetchone()[0]
+        except Error as err:
+            logger.error(f'failed to count_rows, {err}')
+            return [first_entry, last_entry, count]
+
+        if row_count_later < 1:  # if table has no entries later than specified time
+            logger.debug(f'tried to get first and last entry from table that'
+                         f' has no entries later than specified time {table_name}')
+            return [first_entry, last_entry, count]
         else:
             try:
                 first_req = f"""SELECT open_time from {table_name}
@@ -300,9 +311,11 @@ class ConnectionDB:
 
 
     def get_missing(self, table_name, interval_ms, start, end,  time_col_name='open_time'):
-        # get the last entry and check if it equals end
+
+        # get the last entry in start-end range
         request = f"""
         SELECT MAX({time_col_name}) FROM {table_name}
+        WHERE {time_col_name} BETWEEN {start} AND {end}
         """
         try:
             self.conn_cursor.execute(request)
@@ -313,6 +326,11 @@ class ConnectionDB:
             logger.error(f'{err_message} {table_name}, {err}')
             raise exceptions.SQLError(err, err_message)
 
+        #if there are no records between start and end
+        if last_entry is None:
+            return([(start, end)])
+
+        # find gaps
         try:
             self.conn_cursor.execute(f"""
                 SELECT CAST((z.expected) AS UNSIGNED INTEGER),
@@ -334,7 +352,7 @@ class ConnectionDB:
                    JOIN
                      (SELECT *
                       FROM {table_name}
-                      WHERE {time_col_name} <= {end}
+                      WHERE {time_col_name} BETWEEN {start} AND {end}
                       ) AS b
                    ORDER BY {time_col_name}) AS z
                 WHERE z.got!=0;
