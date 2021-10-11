@@ -80,6 +80,30 @@ def round_timings(table_name, interval, time_col_name='open_time', close_name='c
     conn_db.close_connection()
 
 
+def get_gaps(table_name, interval, start_ts, end_ts,  time_col_name='open_time'):
+    interval_ms = interval_to_milliseconds(interval)
+    if interval_ms is None:
+        logger.error('get_candles_ms got invalid interval,expected '
+                     '1m, 3m, 5m, 15m, 30m, 1h, 2h, 4h, 6h, 8h, 12h, 1d, 3d, 1w')
+        return None
+
+    conn_db = ConnectionDB(host=spooky.creds['host'],
+                           user=spooky.creds['user'],
+                           password=spooky.creds['password'],
+                           database=spooky.creds['database'])
+    try:
+        conn_db.connect()
+    except exceptions.SQLError:
+        return None
+
+    try:
+        gaps = conn_db.get_missing(table_name, interval_ms, start_ts, end_ts, time_col_name='open_time')
+    except exceptions.SQLError:
+        conn_db.close_connection()
+        return None
+    return gaps
+
+
 def check_table(table_name, interval, time_col_name='open_time', close_name='close_time'):
 
     interval_ms = interval_to_milliseconds(interval)
@@ -97,6 +121,9 @@ def check_table(table_name, interval, time_col_name='open_time', close_name='clo
         conn_db.connect()
     except exceptions.SQLError:
         return None
+
+
+    #print(conn_db.get_gaps(table_name, 0, 1515038760000, interval_ms))
 
     connection, cursor = conn_db.get_db_and_cursor()
 
@@ -152,7 +179,7 @@ def check_table(table_name, interval, time_col_name='open_time', close_name='clo
 
 
     request = f"""
-        /* keep the latest entry in order to check for gaps later between it and new entries*/
+        /* keep the latest entry not checked in order to check for gaps later between it and new entries*/
         
         UPDATE {table_name} AS t, 
                (SELECT MAX({time_col_name}) AS {time_col_name} FROM {table_name}) AS m      

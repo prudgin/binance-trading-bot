@@ -299,6 +299,61 @@ class ConnectionDB:
             raise exceptions.SQLError(err, err_message)
 
 
+    def get_missing(self, table_name, interval_ms, start, end,  time_col_name='open_time'):
+        # get the last entry and check if it equals end
+        request = f"""
+        SELECT MAX({time_col_name}) FROM {table_name}
+        """
+        try:
+            self.conn_cursor.execute(request)
+            last_entry = self.conn_cursor.fetchone()[0]
+            self.conn_cursor.reset()
+        except Error as err:
+            err_message = 'get gaps, error finding last entry'
+            logger.error(f'{err_message} {table_name}, {err}')
+            raise exceptions.SQLError(err, err_message)
+
+        try:
+            self.conn_cursor.execute(f"""
+                SELECT CAST((z.expected) AS UNSIGNED INTEGER),
+                       IF(z.got-{interval_ms}>z.expected, CAST((z.got-{interval_ms}) AS UNSIGNED INTEGER),
+                       CAST((z.expected) AS UNSIGNED INTEGER)) AS missing
+                FROM
+                   (SELECT 
+                    /* (3) increace @rownum by step from row to row */
+                    @rownum:=@rownum+{interval_ms} AS expected, 
+
+                    /* (4) @rownum should be equal to time_col_name unless we find a gap, 
+                           when we do, overwrite @rownum with gap end and continue*/ 
+                   IF(@rownum={time_col_name}, 0, @rownum:={time_col_name}) AS got
+                   FROM 
+                    /* (1) set variable @rownum equal to start */
+                     (SELECT @rownum:={start}-{interval_ms}) AS a 
+                   /* (2) join a column populated with variable @rownum, 
+                          for now it doesn't change from row to row */
+                   JOIN
+                     (SELECT *
+                      FROM {table_name}
+                      WHERE {time_col_name} <= {end}
+                      ) AS b
+                   ORDER BY {time_col_name}) AS z
+                WHERE z.got!=0;
+            """)
+            missing = self.conn_cursor.fetchall()
+            self.conn_cursor.reset()
+
+        except Error as err:
+            err_message = 'error searching for gaps in table'
+            logger.error(f'{err_message} {table_name}, {err}')
+            raise exceptions.SQLError(err, err_message)
+
+        if last_entry < end:
+            missing.append((last_entry + interval_ms, end))
+
+        return(missing)
+
+
+
 
 
 if __name__ == '__main__':

@@ -140,6 +140,9 @@ async def get_candles(start_ts, end_ts, client, symbol, interval, limit):
             startTime=start_ts,
             endTime=end_ts
         )
+    except asyncio.TimeoutError:
+        looger.error('get_candles, client.get_klines: asyncio.TimeoutError')
+        return None
 
     except pybin_exceptions.BinanceRequestException as err:
         logger.error(f'binance returned a non-json response, {err}')
