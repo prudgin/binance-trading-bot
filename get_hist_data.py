@@ -59,7 +59,7 @@ def interval_to_milliseconds(interval):
         try:
             ms = int(interval[:-1]) * seconds_per_unit[unit] * 1000
         except ValueError:
-            logger.error(f'interval_to_milliseconds got invalid interval[:-1],'
+            logger.warning(f'interval_to_milliseconds got invalid interval[:-1],'
                          f' was expecting int, got {interval[:-1]}')
     else:
         logger.error(f'interval_to_milliseconds got invalid interval unit {unit},'
@@ -72,15 +72,15 @@ def get_limit_intervals(start_ts, end_ts, interval_ms, limit):
     # like[[start, end], [start2, end2], ...], end - start = interval_ms*limit
     # limit = number of candles fetched per 1 API request
     # interval_ms = candle "width"
-    length = interval_ms * limit
-    num_intervals = (end_ts - start_ts) // length
-    leftover = (end_ts - start_ts) % length
-    lst = [[start_ts + i * length, start_ts + (i + 1) * length - interval_ms] for i in range(num_intervals)]
-    if leftover >= interval_ms:
-        start_last = start_ts + num_intervals * length
-        lst.append([start_last, start_last + (leftover // interval_ms) * interval_ms])
-    return lst
-
+    intervals = []
+    int_start = start_ts
+    while int_start <= end_ts:
+        int_end = int_start + interval_ms*(limit-1)
+        if int_end > end_ts:
+            int_end = end_ts
+        intervals.append([int_start, int_end])
+        int_start = int_end + 1
+    return intervals
 
 def reshape_list(lst, max_els):
     # Transform lst into a list of lists. Each sublist has length < max_els.
@@ -160,7 +160,7 @@ async def get_candles(start_ts, end_ts, client, symbol, interval, limit):
     else:
 
         if not len(temp_data):
-            logger.error(f'got empty response from client.get_klines(),\n'
+            logger.warning(f'got empty response from client.get_klines(),\n'
                          f'expected candles from {start_ts} : {ts_to_date(start_ts)}'
                          f' to {end_ts} : {ts_to_date(end_ts)}')
             return []
@@ -171,8 +171,8 @@ async def get_candles(start_ts, end_ts, client, symbol, interval, limit):
             temp_data = [k + [time_loaded] for k in temp_data]
             start_temp = temp_data[0][0]
             end_temp = temp_data[-1][0]
-            print(f'fetched {len(temp_data)} candles from {start_temp} {ts_to_date(start_temp)} included '
-                  f'to {end_temp} {ts_to_date(end_temp)} included')
+            #print(f'fetched {len(temp_data)} candles from {start_temp} {ts_to_date(start_temp)} included '
+                  #f'to {end_temp} {ts_to_date(end_temp)} included')
     return temp_data
 
 
@@ -183,22 +183,23 @@ async def write_candles(start_ts, end_ts, client, symbol, interval, limit, conn_
     api_weight = client.response.headers['x-mbx-used-weight-1m']
 
     if temp_data is None or not len(temp_data):
-        return False
+        return 0
     else:
         try:
             conn_db.write(temp_data, table_name)
             logger.debug(f'data written to table {table_name}')
-            return True
+            return len(temp_data)
         except exceptions.SQLError:
             conn_db.close_connection()
-            return False
+            return 0
 
 
 async def update_candles_ms(symbol: str, interval: str, start_ts=None, end_ts=None, limit=500, max_coroutines=50):
 
     # table names for each symbol and interval are created this way:
     table_name = f'{symbol}{interval}Hist'
-
+    # initialise varaible when last entry was added to the table
+    last_entry_added_at = 0
     # update candles in a database
     interval_ms = interval_to_milliseconds(interval)
     if interval_ms is None:
@@ -244,15 +245,18 @@ async def update_candles_ms(symbol: str, interval: str, start_ts=None, end_ts=No
 
         else:  # table not empty
 
-            first_entry, last_entry = conn_db.get_start_end(table_name)
+            first_entry, last_entry, last_entry_added_at = conn_db.get_start_end(table_name)
+            print(f'writing in existing table, first entry : {first_entry}, {ts_to_date(first_entry)}, '
+                  f'last entry: {last_entry}, {ts_to_date(last_entry)}')
+            print(f'latest table insertion at: {ts_to_date(last_entry_added_at)}')
             logger.debug(f'table ok, first entry: {first_entry}, {ts_to_date(first_entry)}')
             logger.debug(f'last entry: {last_entry}, {ts_to_date(last_entry)}')
 
             if start_ts is None:
-                start_ts = last_entry + interval_ms
+                start_ts = last_entry + 1
                 logger.debug(f'start_ts not specified, setting to {start_ts}, {ts_to_date(start_ts)}')
 
-            if start_ts < first_entry or end_ts <= last_entry:
+            if start_ts < first_entry or end_ts < last_entry:
                 logger.warning('update_candles_ms: time period overlap existing candles, TRUNCATE!!!!')
                 conn_db.truncate(table_name)
 
@@ -267,18 +271,18 @@ async def update_candles_ms(symbol: str, interval: str, start_ts=None, end_ts=No
     if start_ts is not None and end_ts is not None:
         if end_ts - start_ts < interval_ms:
             logger.warning('interval between requested start an end dates < chart interval')
+            print('interval between requested start an end dates < chart interval, abort')
             return None
+    print(f'going to fetch candles from {start_ts} {ts_to_date(start_ts)} to '
+          f'{end_ts} {ts_to_date(end_ts)}')
 
     # create the Binance client, no need for api key
     client = await AsyncClient.create()
 
-    # splits time from start_ts to end_ts into intervals
-    # like[[start, end], [start2, end2], ...], end - start = interval_ms*limit
     intervals = get_limit_intervals(start_ts, end_ts, interval_ms, limit)
-
-    # Transform lst into a list of lists. Each sublist has length < max_els (max_coroutines).
-    # Elements order is preserved.
     resh_intervals = reshape_list(intervals, max_coroutines)
+
+    candles_total = 0
 
     for bunch in resh_intervals:
         tasks = []
@@ -289,17 +293,27 @@ async def update_candles_ms(symbol: str, interval: str, start_ts=None, end_ts=No
             )
         api_weight = client.response.headers['x-mbx-used-weight-1m']
 
-        if int(api_weight) > 300:
-            sleep_time = int(20*int(api_weight)**2/1200**2)
+        if int(api_weight) > 600:
+            sleep_time = int(10*int(api_weight)**3/1200**3)
             logger.warning(f'reaching high api load, current api_weight:'
                            f' {api_weight}, max = 1200, sleep for {sleep_time} sec')
             time.sleep(sleep_time)
-        await asyncio.gather(*tasks)
+        candles_list = await asyncio.gather(*tasks)
+        candles_sum = sum(candles_list)
+        candles_total += candles_sum
+        print(f'wrote {len(candles_list)} bunches of candles, total candles: {candles_sum}, \n'
+              f'number of candles per bunch: {candles_list}')
+
+    print('update_candles_ms summary:')
+    print(f'fetched {candles_total} candles')
+    first_written, last_written, count_written = conn_db.get_start_end_later_than(table_name, last_entry_added_at)
+    print(f'wrote {count_written} candles starting from {first_written} {ts_to_date(first_written)} to '
+          f'{last_written} {ts_to_date(last_written)}')
 
     conn_db.close_connection()
     await client.close_connection()
 
-    return None
+    return True
 
 
 if __name__ == '__main__':

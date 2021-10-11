@@ -8,6 +8,8 @@ import exceptions
 logger = logging.getLogger(__name__)
 
 # SQL table structure that will be created
+# if checked = 1 then we did check_table.round_timings, candles with time rounded get rounded := 1
+# if checked = 2 then we also did check_table.check_table (for missing candles)
 candle_table_structure = [
     ['id', 'INT', 'AUTO_INCREMENT PRIMARY KEY'],
     ['open_time', 'BIGINT', 'NOT NULL UNIQUE'],
@@ -22,7 +24,9 @@ candle_table_structure = [
     ['buy_base_vol', 'DECIMAL(25,8)', 'NOT NULL'],
     ['buy_quote_vol', 'DECIMAL(25,8)', 'NOT NULL'],
     ['ignored', 'DECIMAL(15,8)', ''],
-    ['time_loaded', 'BIGINT']
+    ['time_loaded', 'BIGINT'],
+    ['rounded', 'INT'],
+    ['checked', 'INT']
 ]
 
 
@@ -167,7 +171,19 @@ class ConnectionDB:
             logger.error(f'failed to count_rows, {err}')
             return None
 
+    def list_columns(self, table_name):
+        request = f"""
+                    SHOW COLUMNS FROM {self.database}.{table_name}
+        """
+        self.conn_cursor.execute(request)
+        fetch = self.conn_cursor.fetchall()
+        self.conn_cursor.reset()
+        return [i[0] for i in fetch]
+
     def add_column(self, table_name, column_name, col_type='', not_null='', unique=''):
+        if column_name in self.list_columns(table_name):
+            logger.debug(f'tried to insert a duplicate column{column_name}')
+            return None
         add_req = f"""
                 ALTER TABLE {table_name}
                 ADD COLUMN {column_name} {col_type} {not_null} {unique}
@@ -177,7 +193,7 @@ class ConnectionDB:
             self.conn_cursor.execute(add_req)
         except errors.ProgrammingError as err:
             if 'Duplicate column name' in str(err):
-                logger.debug('tried to insert a duplicate column')
+                logger.debug(f'tried to insert a duplicate column{column_name}')
         except Error as err:
             err_message = 'failed to insert column'
             logger.error(f'{err_message}, {err}')
@@ -185,7 +201,7 @@ class ConnectionDB:
 
     def get_start_end(self, table_name):
         # get the timestamp of the first and the last entry in existing table
-        first_entry, last_entry = None, None
+        first_entry, last_entry, last_entry_added_at = None, None, None
         if self.count_rows(table_name) < 1:  # if table empty
             logger.error(f'tried to get first and last entry from an empty table {table_name}')
         else:
@@ -193,12 +209,51 @@ class ConnectionDB:
                 first_req = f'SELECT open_time from {table_name} ORDER BY open_time LIMIT 1'
                 self.conn_cursor.execute(first_req)
                 first_entry = self.conn_cursor.fetchone()[0]
+                self.conn_cursor.reset()
                 last_req = f'SELECT open_time from {table_name} ORDER BY open_time DESC LIMIT 1'
                 self.conn_cursor.execute(last_req)
                 last_entry = self.conn_cursor.fetchone()[0]
+                self.conn_cursor.reset()
+                last_time = f'SELECT time_loaded from {table_name} ORDER BY time_loaded DESC LIMIT 1'
+                self.conn_cursor.execute(last_time)
+                fetch = self.conn_cursor.fetchone()
+                self.conn_cursor.reset()
+                last_entry_added_at = fetch[0]
+
             except Error as err:
                 logger.error(f'failed to get first and last entry from table {table_name}, {err}')
-        return [first_entry, last_entry]
+        return [first_entry, last_entry, last_entry_added_at]
+
+    def get_start_end_later_than(self, table_name, later_than):
+        # get the timestamp of the first and the last entry in existing table added after "later_than"
+        # also count entries
+        first_entry, last_entry, count = None, None, 0
+        if self.count_rows(table_name) < 1:  # if table empty
+            logger.error(f'tried to get first and last entry from an empty table {table_name}')
+        else:
+            try:
+                first_req = f"""SELECT open_time from {table_name}
+                                WHERE time_loaded > {later_than}
+                                ORDER BY open_time LIMIT 1"""
+                self.conn_cursor.execute(first_req)
+                first_entry = self.conn_cursor.fetchone()[0]
+                self.conn_cursor.reset()
+                last_req = f"""SELECT open_time from {table_name}
+                               WHERE time_loaded > {later_than}
+                               ORDER BY open_time DESC LIMIT 1"""
+                self.conn_cursor.execute(last_req)
+                last_entry = self.conn_cursor.fetchone()[0]
+                self.conn_cursor.reset()
+
+                count_req = f'SELECT COUNT(*) from {table_name} WHERE time_loaded > {later_than}'
+                self.conn_cursor.execute(count_req)
+                fetch = self.conn_cursor.fetchone()
+                self.conn_cursor.reset()
+                count = fetch[0]
+            except Error as err:
+                logger.error(f'failed to get first and last entry from table {table_name}, {err}')
+        return [first_entry, last_entry, count]
+
 
     def truncate(self, table_name):
         try:
@@ -209,7 +264,7 @@ class ConnectionDB:
             logger.error(f'failed to truncate table {table_name}, {err}')
 
     def write(self, data, table_name):
-        headers_list = [i[0] for i in candle_table_structure][1:]
+        headers_list = [i[0] for i in candle_table_structure][1:14]
         headers_string = ', '.join(headers_list)
         helper_string = ' ,'.join(['%s'] * len(headers_list))
         insert_req = f"""
@@ -227,41 +282,23 @@ class ConnectionDB:
             logger.error(f'{err_message} {table_name}, {err}')
             raise exceptions.SQLError(err, err_message)
 
-
-    def check_missing(self, table_name, time_col_name, step):
+    def read(self, table_name, time_col_name, start_ts, end_ts):
+        read_req = f"""
+                SELECT * FROM {table_name}
+                WHERE {time_col_name} BETWEEN {start_ts} AND {end_ts}
+                ORDER BY {time_col_name};
+                """
         try:
-            self.conn_cursor.execute(f"""
-    SELECT
-     CAST((z.expected) AS UNSIGNED INTEGER), 
-     IF(z.got-{step}>z.expected, CAST( (z.got-{step}) AS UNSIGNED INTEGER),
-                                 CAST((z.expected) AS UNSIGNED INTEGER)) AS missing
-    FROM (
-    SELECT
-    
-      /* (3) increace @rownum by step from row to row */
-      @rownum:=@rownum+{step} AS expected,
-      
-      /* (4) @rownum should be equal to time_col_name unless we find a gap,
-             when we do, overwrite @rownum with gap end and continue*/
-      IF(@rownum={time_col_name}, 0, @rownum:={time_col_name}) AS got
-    FROM
-      /* (1) set variable @rownum equal to the first entry in sorted time_col_name */
-      (SELECT @rownum:=(SELECT {time_col_name} from {table_name} ORDER BY {time_col_name} LIMIT 1)-{step}) AS a
-      
-      /* (2) join a column populated with variable @rownum, for now it doesn't change from row to row */
-      JOIN
-      {table_name}
-      ORDER BY {time_col_name}
-      ) AS z
-    WHERE z.got!=0;
-    """)
+            self.conn_cursor.execute(read_req)
             fetch = self.conn_cursor.fetchall()
             self.conn_cursor.reset()
             return fetch
         except Error as err:
-            err_message = 'error searching for gaps in table'
+            err_message = 'error reading data from table'
             logger.error(f'{err_message} {table_name}, {err}')
             raise exceptions.SQLError(err, err_message)
+
+
 
 
 if __name__ == '__main__':
