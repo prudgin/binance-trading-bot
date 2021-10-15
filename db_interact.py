@@ -4,6 +4,7 @@ import logging
 import sys
 from decimal import Decimal
 import exceptions
+from helper_functions import interval_to_milliseconds
 
 logger = logging.getLogger(__name__)
 
@@ -46,6 +47,12 @@ def adapt_data(data):
                 Decimal(j[11]),  # ignored
                 j[12]] for j in data]
     return adapted
+
+
+
+
+
+
 
 
 # this class is used to connect to a MySQL database
@@ -199,11 +206,30 @@ class ConnectionDB:
             logger.error(f'{err_message}, {err}')
             raise exceptions.SQLError(err, err_message)
 
+    def get_latest_entry(self, table_name):
+        # return the entry that was added last
+        last_entry_added_at = 0
+        try:
+            last_time = f'SELECT MAX(time_loaded) from {table_name}'
+            self.conn_cursor.execute(last_time)
+            fetch = self.conn_cursor.fetchone()
+            self.conn_cursor.reset()
+            if fetch is None:
+                last_entry_added_at = 0
+            else:
+                last_entry_added_at = fetch[0]
+            return last_entry_added_at
+        except Error as err:
+            logger.error(f'failed to get last entry from table {table_name}, {err}')
+
+
+
     def get_start_end(self, table_name):
         # get the timestamp of the first and the last entry in existing table
         first_entry, last_entry, last_entry_added_at = None, None, None
         if self.count_rows(table_name) < 1:  # if table empty
             logger.error(f'tried to get first and last entry from an empty table {table_name}')
+            return [first_entry, last_entry, last_entry_added_at]
         else:
             try:
                 first_req = f'SELECT open_time from {table_name} ORDER BY open_time LIMIT 1'
@@ -224,7 +250,7 @@ class ConnectionDB:
                 logger.error(f'failed to get first and last entry from table {table_name}, {err}')
         return [first_entry, last_entry, last_entry_added_at]
 
-    def get_start_end_later_than(self, table_name, later_than):
+    def get_start_end_later_than(self, table_name, later_than, only_count=False):
         # get the timestamp of the first and the last entry in existing table added after "later_than"
         # also count entries
         first_entry, last_entry, count = None, None, 0
@@ -232,12 +258,15 @@ class ConnectionDB:
         try:
             count_req = f'SELECT COUNT(open_time) FROM {table_name} WHERE time_loaded > {later_than}'
             self.conn_cursor.execute(count_req)
-            row_count_later = self.conn_cursor.fetchone()[0]
+            count = self.conn_cursor.fetchone()[0]
+            self.conn_cursor.reset()
+            if only_count:
+                return [first_entry, last_entry, count]
         except Error as err:
             logger.error(f'failed to count_rows, {err}')
             return [first_entry, last_entry, count]
 
-        if row_count_later < 1:  # if table has no entries later than specified time
+        if count < 1:  # if table has no entries later than specified time
             logger.debug(f'tried to get first and last entry from table that'
                          f' has no entries later than specified time {table_name}')
             return [first_entry, last_entry, count]
@@ -256,11 +285,7 @@ class ConnectionDB:
                 last_entry = self.conn_cursor.fetchone()[0]
                 self.conn_cursor.reset()
 
-                count_req = f'SELECT COUNT(*) from {table_name} WHERE time_loaded > {later_than}'
-                self.conn_cursor.execute(count_req)
-                fetch = self.conn_cursor.fetchone()
-                self.conn_cursor.reset()
-                count = fetch[0]
+
             except Error as err:
                 logger.error(f'failed to get first and last entry from table {table_name}, {err}')
         return [first_entry, last_entry, count]
@@ -279,7 +304,7 @@ class ConnectionDB:
         headers_string = ', '.join(headers_list)
         helper_string = ' ,'.join(['%s'] * len(headers_list))
         insert_req = f"""
-                INSERT INTO {table_name}
+                INSERT IGNORE INTO {table_name}
                 ({headers_string})
                 VALUES ( {helper_string})
                 """
@@ -293,7 +318,7 @@ class ConnectionDB:
             logger.error(f'{err_message} {table_name}, {err}')
             raise exceptions.SQLError(err, err_message)
 
-    def read(self, table_name, time_col_name, start_ts, end_ts):
+    def read(self, table_name, start_ts, end_ts, time_col_name='open_time'):
         read_req = f"""
                 SELECT * FROM {table_name}
                 WHERE {time_col_name} BETWEEN {start_ts} AND {end_ts}
@@ -311,7 +336,6 @@ class ConnectionDB:
 
 
     def get_missing(self, table_name, interval_ms, start, end,  time_col_name='open_time'):
-
         # get the last entry in start-end range
         request = f"""
         SELECT MAX({time_col_name}) FROM {table_name}
