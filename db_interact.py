@@ -206,49 +206,26 @@ class ConnectionDB:
             logger.error(f'{err_message}, {err}')
             raise exceptions.SQLError(err, err_message)
 
-    def get_latest_entry(self, table_name):
-        # return the entry that was added last
-        last_entry_added_at = 0
+    def get_latest_id(self, table_name):
+        # return the id of entry that was added last
+        last_id = 0
         try:
-            last_time = f'SELECT MAX(time_loaded) from {table_name}'
+            last_time = f"""
+                            SELECT id FROM {table_name}
+                            ORDER BY id DESC
+                            LIMIT 1
+                            """
             self.conn_cursor.execute(last_time)
             fetch = self.conn_cursor.fetchone()
             self.conn_cursor.reset()
             if fetch is None:
-                last_entry_added_at = 0
+                last_id = 0
             else:
-                last_entry_added_at = fetch[0]
-            return last_entry_added_at
+                last_id = fetch[0]
+            return last_id
         except Error as err:
-            logger.error(f'failed to get last entry from table {table_name}, {err}')
+            logger.error(f'failed to get last id from table {table_name}, {err}')
 
-
-
-    def get_start_end(self, table_name):
-        # get the timestamp of the first and the last entry in existing table
-        first_entry, last_entry, last_entry_added_at = None, None, None
-        if self.count_rows(table_name) < 1:  # if table empty
-            logger.error(f'tried to get first and last entry from an empty table {table_name}')
-            return [first_entry, last_entry, last_entry_added_at]
-        else:
-            try:
-                first_req = f'SELECT open_time from {table_name} ORDER BY open_time LIMIT 1'
-                self.conn_cursor.execute(first_req)
-                first_entry = self.conn_cursor.fetchone()[0]
-                self.conn_cursor.reset()
-                last_req = f'SELECT open_time from {table_name} ORDER BY open_time DESC LIMIT 1'
-                self.conn_cursor.execute(last_req)
-                last_entry = self.conn_cursor.fetchone()[0]
-                self.conn_cursor.reset()
-                last_time = f'SELECT time_loaded from {table_name} ORDER BY time_loaded DESC LIMIT 1'
-                self.conn_cursor.execute(last_time)
-                fetch = self.conn_cursor.fetchone()
-                self.conn_cursor.reset()
-                last_entry_added_at = fetch[0]
-
-            except Error as err:
-                logger.error(f'failed to get first and last entry from table {table_name}, {err}')
-        return [first_entry, last_entry, last_entry_added_at]
 
     def get_start_end_later_than(self, table_name, later_than, only_count=False):
         # get the timestamp of the first and the last entry in existing table added after "later_than"
@@ -256,7 +233,7 @@ class ConnectionDB:
         first_entry, last_entry, count = None, None, 0
 
         try:
-            count_req = f'SELECT COUNT(open_time) FROM {table_name} WHERE time_loaded > {later_than}'
+            count_req = f'SELECT COUNT(id) FROM {table_name} WHERE id > {later_than}'
             self.conn_cursor.execute(count_req)
             count = self.conn_cursor.fetchone()[0]
             self.conn_cursor.reset()
@@ -273,13 +250,13 @@ class ConnectionDB:
         else:
             try:
                 first_req = f"""SELECT open_time from {table_name}
-                                WHERE time_loaded > {later_than}
+                                WHERE id > {later_than}
                                 ORDER BY open_time LIMIT 1"""
                 self.conn_cursor.execute(first_req)
                 first_entry = self.conn_cursor.fetchone()[0]
                 self.conn_cursor.reset()
                 last_req = f"""SELECT open_time from {table_name}
-                               WHERE time_loaded > {later_than}
+                               WHERE id > {later_than}
                                ORDER BY open_time DESC LIMIT 1"""
                 self.conn_cursor.execute(last_req)
                 last_entry = self.conn_cursor.fetchone()[0]
@@ -291,13 +268,7 @@ class ConnectionDB:
         return [first_entry, last_entry, count]
 
 
-    def truncate(self, table_name):
-        try:
-            trunc_req = f'TRUNCATE TABLE {table_name}'
-            self.conn_cursor.execute(trunc_req)
-            self.conn.commit()
-        except Error as err:
-            logger.error(f'failed to truncate table {table_name}, {err}')
+
 
     def write(self, data, table_name):
         headers_list = [i[0] for i in candle_table_structure][1:14]
