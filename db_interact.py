@@ -45,14 +45,9 @@ def adapt_data(data):
                 Decimal(j[9]),  # buy_base_vol
                 Decimal(j[10]),  # buy_quote_vol
                 Decimal(j[11]),  # ignored
-                j[12]] for j in data]
+                j[12]  # time loaded
+                ] for j in data]
     return adapted
-
-
-
-
-
-
 
 
 # this class is used to connect to a MySQL database

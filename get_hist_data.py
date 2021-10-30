@@ -9,7 +9,8 @@ from datetime import datetime
 import exceptions
 import asyncio
 import spooky
-from helper_functions import interval_to_milliseconds, ts_to_date
+from helper_functions import interval_to_milliseconds, ts_to_date, generate_data, round_timings, round_data,\
+    get_data_gaps
 
 logger = logging.getLogger(__name__)
 
@@ -17,33 +18,43 @@ logger = logging.getLogger(__name__)
 
 
 
-def get_candles_from_db(symbol: str, interval: str, start_ts, end_ts, limit=500, max_coroutines=50):
+def get_candles_from_db(symbol: str,
+                        interval: str,
+                        start_ts: int,
+                        end_ts: int,
+                        limit=500,
+                        max_coroutines=50):
+    """
+
+    :param symbol:
+    :param interval:
+    :param start_ts:
+    :param end_ts:
+    :param limit:
+    :param max_coroutines:
+    :return: list of lists
+
+    Trading bot is going to catch all errors from this function
+    and somehow inform human that this shit is not working.
+    This function will return None in case it is worth trying one more time later
+    """
     # table names for each symbol and interval are created this way:
     table_name = f'{symbol}{interval}Hist'
 
     interval_ms = interval_to_milliseconds(interval)
-    if interval_ms is None:
-        logger.error('get_candles_ms got invalid interval,expected '
-                     '1m, 3m, 5m, 15m, 30m, 1h, 2h, 4h, 6h, 8h, 12h, 1d, 3d, 1w')
-        return None
 
     if end_ts - start_ts < interval_ms:
-        logger.warning('interval between requested start an end dates < chart interval')
-        print('interval between requested start an end dates < chart interval, abort')
+        logger.warning('interval between requested start an end dates < chart interval, abort')
         return None
+
+    start_ts, end_ts = round_timings(start_ts, end_ts, interval_ms)
 
     # connecting to database
     conn_db = ConnectionDB(host=spooky.creds['host'],
                            user=spooky.creds['user'],
                            password=spooky.creds['password'],
                            database=spooky.creds['database'])
-    try:
-        conn_db.connect()
-    except exceptions.SQLError:
-        return None
-
-
-
+    conn_db.connect()
 
     #check if table present, else create
     if not conn_db.table_in_db(table_name):
@@ -53,7 +64,7 @@ def get_candles_from_db(symbol: str, interval: str, start_ts, end_ts, limit=500,
     # get when last entry was added to the table
     last_entry_id = conn_db.get_latest_id(table_name)
 
-    print(f'going to fetch candles from {start_ts} {ts_to_date(start_ts)} to '
+    logger.debug(f'going to fetch candles from {start_ts} {ts_to_date(start_ts)} to '
           f'{ts_to_date(end_ts)} {end_ts}')
 
     # check if requested data is present in database
@@ -95,10 +106,7 @@ async def get_write_candles(conn_db, symbol, table_name, interval: str, start_ts
         return None
 
     # get when last entry was added to the table
-    perf_start = time.perf_counter()
-    logger.debug('start get_latest_id')
     last_entry_id = conn_db.get_latest_id(table_name)
-    logger.debug(f'it took {time.perf_counter() - perf_start}')
 
 
     # create the Binance client, no need for api key
@@ -156,37 +164,30 @@ async def get_write_candles(conn_db, symbol, table_name, interval: str, start_ts
     return True
 
 
+async def write_candles(start_ts, end_ts, client, symbol, interval,
+                        interval_ms, limit, conn_db, table_name):
+    # write candles into a database
+    temp_data, rounded_count = await get_candles(start_ts, end_ts, client, symbol, interval, interval_ms, limit)
+    # api weight is binance api load limit https://www.binance.com/ru/support/faq/360004492232
+    api_weight = client.response.headers['x-mbx-used-weight-1m']
 
-def get_limit_intervals(start_ts, end_ts, interval_ms, limit):
-    # splits time from start_ts to end_ts into intervals, each interval is for one api request
-    # like[[start, end], [start2, end2], ...], end - start = interval_ms*limit
-    # limit = number of candles fetched per 1 API request
-    # interval_ms = candle "width"
-    intervals = []
-    int_start = start_ts
-    while int_start <= end_ts:
-        int_end = int_start + interval_ms*(limit-1)
-        if int_end > end_ts:
-            int_end = end_ts
-        intervals.append([int_start, int_end])
-        int_start = int_end + 1
-    return intervals
-
-def reshape_list(lst, max_els):
-    # Transform lst into a list of lists. Each sublist has length < max_els.
-    # Elements order is preserved.
-    if len(lst) <= max_els:
-        return [lst]
+    if temp_data is None or not len(temp_data):
+        return (0, 0, 0)
     else:
-        num_els = len(lst) // max_els
-        leftover = len(lst) % max_els
-        lst2 = [lst[i * max_els:(i + 1) * max_els] for i in range(num_els)]
-        if leftover > 0:
-            lst2 = lst2 + [lst[-leftover:]]
-        return lst2
+        try:
+
+            last_in_data = temp_data[-1][0]
+            conn_db.write(temp_data, table_name)
+            return (len(temp_data), rounded_count, last_in_data)
+        except exceptions.SQLError:
+            conn_db.close_connection()
+            return 0
 
 
-async def get_candles(start_ts, end_ts, client, symbol, interval, limit):
+
+
+
+async def get_candles(start_ts, end_ts, client, symbol, interval, interval_ms, limit):
     """
         :param start_ts: starting time stamp, it seems binance has data from ['2017-08-17, 04:00:00']
         :type start_ts: int in milliseconds
@@ -222,8 +223,9 @@ async def get_candles(start_ts, end_ts, client, symbol, interval, limit):
             ]
         ]
         """
+    temp_data = None
+    rounded_count = 0
     try:
-        logger.debug('start client.get_klines')
         temp_data = await client.get_klines(
             symbol=symbol,
             interval=interval,
@@ -233,11 +235,11 @@ async def get_candles(start_ts, end_ts, client, symbol, interval, limit):
         )
     except asyncio.TimeoutError:
         logger.error('get_candles, client.get_klines: asyncio.TimeoutError')
-        return None
+        temp_data = None
 
     except pybin_exceptions.BinanceRequestException as err:
         logger.error(f'binance returned a non-json response, {err}')
-        return None
+        temp_data = None
     except pybin_exceptions.BinanceAPIException as err:
         logger.error(f'API call error, probably bad API request, details below:\n'
                      f'     response status code: {err.status_code}\n'
@@ -246,65 +248,76 @@ async def get_candles(start_ts, end_ts, client, symbol, interval, limit):
                      f'     Binance error message: {err.message}\n'
                      f'     request object if available: {err.request}\n'
                      )
-        return None
+        temp_data = None
+    except Exception as err:
+        logger.error(f'get_candles: unknown error: {err}')
+        temp_data = None
 
-    if temp_data is None:
-        logger.error(f'could not load data, reason unknown')
-        return None
+    if temp_data is not None:
+
+        temp_data, rounded_count = round_data(temp_data, interval_ms)
+
+        # if sent correct request without raising any errors, check for gaps in data
+        # if there are any gaps, write expected candles with -1 in all fields except for open_time and close_time
+        response_status = client.response.status
+        logger.debug(f'response status = {response_status}')
+
+        start_perf = time.perf_counter()
+        if response_status == 200:
+            temp_gaps = get_data_gaps(temp_data, start_ts, end_ts, interval_ms)
+            shift = 0
+            #print(f'start: {start_ts}, end: {end_ts}')
+            #print(f'gaps: {temp_gaps}')
+            for gap in temp_gaps:
+                insert_index = gap[2] + shift
+                generated = generate_data(gap[0], gap[1], interval_ms)
+                temp_data[insert_index:insert_index] = generated
+                shift += len(generated)
+
+        logger.debug(f'filling took: {time.perf_counter() - start_perf}')
+
+        #  insert "time_loaded" column in temp_data list of lists, set it to now()
+        time_loaded = int(time.time() * 1000)
+        temp_data = [k + [time_loaded] for k in temp_data]
+
+
     else:
+        logger.error(f'could not load data')
 
-        if not len(temp_data):
-            logger.warning(f'got empty response from client.get_klines(),\n'
-                         f'expected candles from {start_ts} : {ts_to_date(start_ts)}'
-                         f' to {ts_to_date(end_ts)} : {end_ts}')
-            return []
-
-        else:
-            # insert "time_loaded" column in temp_data list of lists, set it to now()
-            logger.debug('get_candles: loaded candles')
-            time_loaded = int(time.time() * 1000)
-            temp_data = [k + [time_loaded] for k in temp_data]
-            start_temp = temp_data[0][0]
-            end_temp = temp_data[-1][0]
-            logger.debug('get_candles: returning candles')
-    return temp_data
+    return temp_data, rounded_count
 
 
 
-async def write_candles(start_ts, end_ts, client, symbol, interval, interval_ms, limit, conn_db, table_name):
-    # write candles into a database
-    logger.debug('write_candles: started')
-    temp_data = await get_candles(start_ts, end_ts, client, symbol, interval, limit)
-    # api weight is binance api load limit https://www.binance.com/ru/support/faq/360004492232
-    api_weight = client.response.headers['x-mbx-used-weight-1m']
 
-    if temp_data is None or not len(temp_data):
-        return (0, 0, 0)
+def get_limit_intervals(start_ts, end_ts, interval_ms, limit):
+    # splits time from start_ts to end_ts into intervals, each interval is for one api request
+    # like[[start, end], [start2, end2], ...], end - start = interval_ms*limit
+    # limit = number of candles fetched per 1 API request
+    # interval_ms = candle "width"
+    intervals = []
+    int_start = start_ts
+    while int_start <= end_ts:
+        int_end = int_start + interval_ms*(limit-1) - 1
+        if int_end > end_ts:
+            int_end = end_ts
+        intervals.append([int_start, int_end])
+        int_start = int_end + 1
+    return intervals
+
+def reshape_list(lst, max_els):
+    # Transform lst into a list of lists. Each sublist has length < max_els.
+    # Elements order is preserved.
+    if len(lst) <= max_els:
+        return [lst]
     else:
-        try:
-            # some candles have open_time not multiple of candle width, need to correct them
-            # for example, while most 1 minute candles have timings like 15:00:00, some have 15:00:14
-            # i[0] = open_time, i[6] = close_time
-            # add [1] at the beginnig of the list if correction is going to happen
-            # else add [0], in order to count corrections
-            # the question is - do I really need to correct those?
-            logger.debug('write_candles: got candles, transforming')
-            temp_data = [
-                [1] + [rdd] + i[1:6] + [rdd-i[0]+i[6]] + i[7:]
-                if (rdd := interval_ms * round(i[0] / interval_ms)) != i[0]
-                else
-                [0] + i
-                for i in temp_data]
-            rounded_count = sum([i[0] for i in temp_data])
-            temp_data = [i[1:] for i in temp_data]
-            last_in_data = temp_data[-1][0]
-            conn_db.write(temp_data, table_name)
-            logger.debug(f'data written to table {table_name}')
-            logger.debug('write_candles: wrote candles, returning counters')
-            return (len(temp_data), rounded_count, last_in_data)
-        except exceptions.SQLError:
-            conn_db.close_connection()
-            return 0
+        num_els = len(lst) // max_els
+        leftover = len(lst) % max_els
+        lst2 = [lst[i * max_els:(i + 1) * max_els] for i in range(num_els)]
+        if leftover > 0:
+            lst2 = lst2 + [lst[-leftover:]]
+        return lst2
+
+
 
 
 
@@ -317,7 +330,8 @@ def get_gaps(conn_db, table_name, interval_ms, start_ts, end_ts, time_col_name='
     except exceptions.SQLError:
         conn_db.close_connection()
         return None
-    logger.debug('finished get_gaps')
+    if not gaps:
+        print('all requested data already present in database, no gaps found')
     return gaps
 
 
