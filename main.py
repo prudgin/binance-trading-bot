@@ -31,12 +31,12 @@ if __name__ == '__main__':
     conn_db.connect()
 
     #print(conn_db.list_databases())
-    #conn_db.table_delete('BTCUSDT1hHist')
+    conn_db.table_delete('BTCUSDT1mHist')
     conn_db.close_connection()
 
     #1502668800000 default start
     #end_ts = int(time.time() * 1000) = now
-    get_candles_from_db('BTCUSDT', '1h', start_ts=1502668800000, end_ts = int(time.time() * 1000))
+    get_candles_from_db('BTCUSDT', '1m', start_ts=1502668800000, end_ts = 1502668800000 + 60000*100000)
 
 
 

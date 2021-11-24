@@ -1,3 +1,5 @@
+import time
+
 from mysql.connector import connect, Error, errors
 from getpass import getpass
 import logging
@@ -98,10 +100,16 @@ class ConnectionDB:
 
     def close_connection(self):
         if self.connected:
-            self.conn_cursor.close()
-            self.conn.close()
-            logger.debug(f'closed connection to database {self.database}')
-            self.connected = False
+            try:
+                self.conn_cursor.close()
+                self.conn.close()
+                self.connected = False
+                logger.debug(f'closed connection to database {self.database}')
+            except Error as err:
+                err_message = 'error while closing connection to a database'
+                logger.error(f'{err_message} {self.database}; {err}')
+                raise exceptions.SQLError(err, err_message)
+
 
     def get_db_and_cursor(self):
         if self.connected:
@@ -125,6 +133,8 @@ class ConnectionDB:
                 self.conn.commit()
             except Error as err:
                 logger.error(f'could not create table {table_name}, {err}')
+                return None
+        return True
 
     def table_delete(self, table_name):
         if self.table_in_db(table_name):
@@ -213,13 +223,11 @@ class ConnectionDB:
             self.conn_cursor.execute(last_time)
             fetch = self.conn_cursor.fetchone()
             self.conn_cursor.reset()
-            if fetch is None:
-                last_id = 0
-            else:
+            if fetch:
                 last_id = fetch[0]
-            return last_id
         except Error as err:
             logger.error(f'failed to get last id from table {table_name}, {err}')
+        return last_id
 
 
     def get_start_end_later_than(self, table_name, later_than, only_count=False):
@@ -257,9 +265,9 @@ class ConnectionDB:
                 last_entry = self.conn_cursor.fetchone()[0]
                 self.conn_cursor.reset()
 
-
             except Error as err:
                 logger.error(f'failed to get first and last entry from table {table_name}, {err}')
+
         return [first_entry, last_entry, count]
 
 
@@ -302,6 +310,8 @@ class ConnectionDB:
 
 
     def get_missing(self, table_name, interval_ms, start, end,  time_col_name='open_time'):
+        missing = None
+        last_entry = None
         # get the last entry in start-end range
         request = f"""
         SELECT MAX({time_col_name}) FROM {table_name}
@@ -355,7 +365,7 @@ class ConnectionDB:
             logger.error(f'{err_message} {table_name}, {err}')
             raise exceptions.SQLError(err, err_message)
 
-        if last_entry < end:
+        if last_entry is not None and last_entry < end:
             missing.append((last_entry + interval_ms, end))
 
         return(missing)

@@ -54,7 +54,7 @@ def interval_to_milliseconds(interval):
         try:
             ms = int(interval[:-1]) * seconds_per_unit[unit] * 1000
         except ValueError:
-            logger.warning(f'interval_to_milliseconds got invalid interval[:-1],'
+            logger.error(f'interval_to_milliseconds got invalid interval[:-1],'
                          f' was expecting int, got {interval[:-1]}')
     else:
         logger.error(f'interval_to_milliseconds got invalid interval unit {unit},'
