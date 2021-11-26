@@ -365,7 +365,8 @@ class ConnectionDB:
             logger.error(f'{err_message} {table_name}, {err}')
             raise exceptions.SQLError(err, err_message)
 
-        if last_entry is not None and last_entry < end:
+        #  in case we have empty space between last entry and an "end" we have requested
+        if last_entry < end:
             missing.append((last_entry + interval_ms, end))
 
         return(missing)
