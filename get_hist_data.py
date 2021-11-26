@@ -32,7 +32,7 @@ def get_candles_from_db(symbol: str,
     :param end_ts:
     :param limit:
     :param max_coroutines:
-    :return: list of lists
+    :return: list of lists 
 
     returns candles with open_time fall in: start_ts <= open_time <= end_ts
 
