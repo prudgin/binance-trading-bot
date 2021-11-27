@@ -12,7 +12,7 @@ from db_interact import ConnectionDB
 logging.basicConfig(
     # filename='get_hist_data.log',
     format="%(asctime)s %(levelname)s:%(name)s: %(message)s",
-    level=logging.DEBUG,
+    level=logging.WARNING,
     datefmt="%H:%M:%S",
     stream=sys.stderr
 )
@@ -31,13 +31,13 @@ if __name__ == '__main__':
     conn_db.connect()
 
     #print(conn_db.list_databases())
-    conn_db.table_delete('BTCUSDTk1dHist')
+    #conn_db.table_delete('BTCUSDT1hHist')
     conn_db.close_connection()
 
     #1502668800000 default start
     #end_ts = int(time.time() * 1000) = now
     start = time.perf_counter()
-    get_candles_from_db('BTCUSDT', '1h', start_ts=1502668800000-60000*100000, end_ts=int(time.time() * 1000))
+    get_candles_from_db('BTCUSDT', '1h', start_ts=1502668800000, end_ts=int(time.time() * 1000))
     print(f'it took {time.perf_counter() - start}')
 
 

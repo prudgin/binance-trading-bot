@@ -32,19 +32,12 @@ def get_candles_from_db(symbol: str,
     :param end_ts:
     :param limit:
     :param max_coroutines:
-    :return: list of lists 
-
+    :return: list of lists
     returns candles with open_time fall in: start_ts <= open_time <= end_ts
-
-
-
     exceptions scheme:
     this function raises no exceptions, tries to catch all, and returns None if exception
     interval_to_milliseconds : None
-
     """
-
-
     interval_ms = interval_to_milliseconds(interval)
     if interval_ms is None:
         return None
@@ -59,8 +52,6 @@ def get_candles_from_db(symbol: str,
     start_ts, end_ts = round_timings(start_ts, end_ts, interval_ms)
     print(f'going to fetch candles from {start_ts} {ts_to_date(start_ts)} to '
           f'{ts_to_date(end_ts)} {end_ts}')
-    logger.debug(f'going to fetch candles from {start_ts} {ts_to_date(start_ts)} to '
-                 f'{ts_to_date(end_ts)} {end_ts}')
 
     # connecting to database
     conn_db = ConnectionDB(host=spooky.creds['host'],
@@ -76,9 +67,10 @@ def get_candles_from_db(symbol: str,
     if not conn_db.table_in_db(table_name):
         logger.debug(f'not found table {table_name}, creating one')
         if not conn_db.table_create(table_name):
+            conn_db.close_connection()
             return None
 
-    # get when last entry was added to the table
+    # get when last entry was added to the table, need this for printing report of how many candles were written
     # in case of error returns 0
     last_entry_id = conn_db.get_latest_id(table_name)
 
@@ -89,6 +81,7 @@ def get_candles_from_db(symbol: str,
     gaps = get_gaps(conn_db, table_name, interval_ms, start_ts, end_ts)
     if gaps is None: # get_gaps function encountered an error
         logger.error('get_gaps function returned None')
+        conn_db.close_connection()
         return None
     if gaps: #if there are gaps in a period of interest
         print(' found gaps:')
@@ -96,20 +89,17 @@ def get_candles_from_db(symbol: str,
             print(f' {gap[0]} {ts_to_date(gap[0])} - {ts_to_date(gap[1])} {gap[1]}')
         for gap in gaps:
             print(f'  loading gap from exchange: {gap[0]} {ts_to_date(gap[0])} - {ts_to_date(gap[1])} {gap[1]}')
+
             # get candles covering gap from exchange and write them in database
-            logger.debug('start asyncio.run(get_write_candles)')
-
-
             if not asyncio.run(get_write_candles(conn_db, symbol, table_name, interval, interval_ms, gap[0], gap[1],
                                                  limit, max_coroutines)):
                 logger.error('get_write_candles failed.')
-                return None
+                conn_db.close_connection()
+                return None # not going to happen, because get_write_candles doesn't return False or None
 
 
-    logger.debug('start conn_db.get_start_end_later_than()')
     _, _, count_written = conn_db.get_start_end_later_than(table_name, last_entry_id, only_count=True)
     print(f'wrote {count_written} candles to db')
-
 
     #  ok, we tried to get data from exchange, now just fetch from database:
     logger.debug('reading from db: conn_db.read()')
@@ -124,16 +114,12 @@ def get_candles_from_db(symbol: str,
 
 
 
-
-
 async def get_write_candles(conn_db, symbol, table_name, interval: str, interval_ms: int, start_ts, end_ts,
                             limit, max_coroutines):
     #  return None if fails, else return True
-    logger.debug('start get_write_candles')
 
     # get when last entry was added to the table, need this to print out a final report
     last_entry_id = conn_db.get_latest_id(table_name)
-
 
     #  Create the Binance client, no need for api key.
     exchange_client = await AsyncClient.create(requests_params = {"timeout": 60})
@@ -160,7 +146,6 @@ async def get_write_candles(conn_db, symbol, table_name, interval: str, interval
 
 
     print('   gap summary:')
-    logger.debug('get_write_candles: start conn_db.get_start_end_later_than')
     first_written, last_written, count_written = conn_db.get_start_end_later_than(table_name, last_entry_id)
     if first_written and last_written:
         print(f'    wrote to db {count_written} candles starting from {first_written} {ts_to_date(first_written)} to '
@@ -169,11 +154,8 @@ async def get_write_candles(conn_db, symbol, table_name, interval: str, interval
         print(f'   wrote {count_written} candles')
 
     await exchange_client.close_connection()
-    logger.debug('get_write_candles: finished')
 
     return True
-
-
 
 
 
@@ -377,7 +359,6 @@ def get_gaps(conn_db, table_name, interval_ms, start_ts, end_ts, time_col_name='
     try:
         gaps = conn_db.get_missing(table_name, interval_ms, start_ts, end_ts)
     except exceptions.SQLError:
-        conn_db.close_connection()
         return None
     if not gaps and gaps is not None: #if we got an empty list but not a None
         print('all requested data already present in database, no gaps found')
