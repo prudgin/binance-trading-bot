@@ -78,15 +78,15 @@ def round_data(temp_data, interval_ms):
     # add [1] at the beginnig of the list if correction is going to happen
     # else add [0], in order to count corrections
     # the question is - do I really need to correct those?
-    temp_data = [
+    rounded_data = [
         [1] + [rdd] + i[1:6] + [rdd - i[0] + i[6]] + i[7:]
         if (rdd := interval_ms * round(i[0] / interval_ms)) != i[0]
         else
         [0] + i
         for i in temp_data]
-    rounded_count = sum([i[0] for i in temp_data])
-    temp_data = [i[1:] for i in temp_data]
-    return temp_data, rounded_count
+    rounded_count = sum([i[0] for i in rounded_data])
+    rounded_data = [i[1:] for i in rounded_data]
+    return rounded_data, rounded_count
 
 
 

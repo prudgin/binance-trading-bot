@@ -10,46 +10,7 @@ from helper_functions import interval_to_milliseconds
 
 logger = logging.getLogger(__name__)
 
-# SQL table structure that will be created
-# if checked = 1 then we did check_table.round_timings, candles with time rounded get rounded := 1
-# if checked = 2 then we also did check_table.check_table (for missing candles)
-candle_table_structure = [
-    ['id', 'INT', 'AUTO_INCREMENT PRIMARY KEY'],
-    ['open_time', 'BIGINT', 'NOT NULL UNIQUE'],
-    ['open', 'DECIMAL(15,8)', 'NOT NULL'],
-    ['high', 'DECIMAL(15,8)', 'NOT NULL'],
-    ['low', 'DECIMAL(15,8)', 'NOT NULL'],
-    ['close', 'DECIMAL(15,8)', 'NOT NULL'],
-    ['volume', 'DECIMAL(25,8)', 'NOT NULL'],
-    ['close_time', 'BIGINT', 'NOT NULL UNIQUE'],
-    ['quote_vol', 'DECIMAL(25,8)', 'NOT NULL'],
-    ['num_trades', 'BIGINT', 'NOT NULL'],
-    ['buy_base_vol', 'DECIMAL(25,8)', 'NOT NULL'],
-    ['buy_quote_vol', 'DECIMAL(25,8)', 'NOT NULL'],
-    ['ignored', 'DECIMAL(15,8)', ''],
-    ['time_loaded', 'BIGINT'],
-    ['rounded', 'INT'],
-    ['checked', 'INT']
-]
 
-
-# format data to be written into the table
-def adapt_data(data):
-    adapted = [[j[0],  # open_time
-                Decimal(j[1]),  # open
-                Decimal(j[2]),  # high
-                Decimal(j[3]),  # low
-                Decimal(j[4]),  # close
-                Decimal(j[5]),  # volume
-                j[6],  # close_time
-                Decimal(j[7]),  # quote_vol
-                j[8],  # num_trades
-                Decimal(j[9]),  # buy_base_vol
-                Decimal(j[10]),  # buy_quote_vol
-                Decimal(j[11]),  # ignored
-                j[12]  # time loaded
-                ] for j in data]
-    return adapted
 
 
 # this class is used to connect to a MySQL database
@@ -117,13 +78,22 @@ class ConnectionDB:
         else:
             return [None, None]
 
-    def table_create(self, table_name):
+    def table_create(self, table_name, data_structure):
+        """
+        :param table_name: name of the table to be created
+        :param data_structure: table structure e.g.:
+        [
+            ['id', 'INT', 'AUTO_INCREMENT PRIMARY KEY'],
+            ['open_time', 'BIGINT', 'NOT NULL UNIQUE'],
+            ...
+        ]
+        """
         if not self.connected:
             logger.error('cannot create table, not connected to a database, run .connect() first')
             return None
         else:
             try:
-                table_struct_string = ',\n'.join([' '.join(i) for i in candle_table_structure])
+                table_struct_string = ',\n'.join([' '.join(i) for i in data_structure])
                 create_new_table_query = f"""
                         CREATE TABLE {table_name} (
                         {table_struct_string}
@@ -143,13 +113,31 @@ class ConnectionDB:
                 self.conn_cursor.execute(delete_table_query)
                 self.conn.commit()
                 logger.debug(f'deleted table {table_name}')
-
             except Error as err:
                 err_message = 'unknown error while deleting a table'
-                logger.error(f'{err_message} {self.database}; {err}')
+                logger.error(f'{err_message}; {self.database}; {err}')
                 raise exceptions.SQLError(err, err_message)
         else:
             logger.error(f'could not delete table {table_name}, no such table')
+
+
+        if self.table_in_db('no_gaps_periods'):
+            try:
+                delete_table_query = f"""DELETE FROM no_gaps_periods
+                                         WHERE table_name = '{table_name}'
+                                        """
+                self.conn_cursor.execute(delete_table_query)
+                self.conn.commit()
+                logger.debug(f'deleted {table_name} from no_gaps_periods')
+                print(f'deleted {table_name} from no_gaps_periods')
+            except Error as err:
+                err_message = 'unknown error while deleting a table'
+                logger.error(f'{err_message}; {self.database}; {err}')
+                raise exceptions.SQLError(err, err_message)
+        else:
+            logger.error(f'could not delete no_gaps_periods, no such table')
+
+
 
     def table_in_db(self, table_name):
         show_req = f'SHOW TABLES LIKE \'{table_name}\''
@@ -273,8 +261,8 @@ class ConnectionDB:
 
 
 
-    def write(self, data, table_name):
-        headers_list = [i[0] for i in candle_table_structure][1:14]
+    def write(self, data, table_name, data_structure):
+        headers_list = [i[0] for i in data_structure][1:]
         headers_string = ', '.join(headers_list)
         helper_string = ' ,'.join(['%s'] * len(headers_list))
         insert_req = f"""
@@ -282,10 +270,8 @@ class ConnectionDB:
                 ({headers_string})
                 VALUES ( {helper_string})
                 """
-        # logger.debug(insert_req)
-        data_to_write = adapt_data(data)
         try:
-            self.conn_cursor.executemany(insert_req, data_to_write)
+            self.conn_cursor.executemany(insert_req, data)
             self.conn.commit()
         except Error as err:
             err_message = 'error writing data into table'
@@ -309,7 +295,43 @@ class ConnectionDB:
             raise exceptions.SQLError(err, err_message)
 
 
+
+
     def get_missing(self, table_name, interval_ms, start, end,  time_col_name='open_time'):
+
+        # access a table that store information about consistency checks
+        # if not present then create
+        # and write down time period that has no gaps in order not to check it second time
+        no_gaps_structure = [
+            ['id', 'INT', 'AUTO_INCREMENT PRIMARY KEY'],
+            ['table_name', 'VARCHAR(20)', 'NOT NULL UNIQUE'],
+            ['start_time', 'BIGINT', 'NOT NULL'],
+            ['end_time', 'BIGINT', 'NOT NULL']
+        ]
+        no_gaps_start, no_gaps_end, no_gaps_period = None, None, None
+        if not self.table_in_db('no_gaps_periods'):
+            self.table_create('no_gaps_periods', no_gaps_structure)
+        else:
+            read_req = f"""
+                    SELECT * FROM no_gaps_periods
+                    WHERE table_name = '{table_name}';
+                    """
+            try:
+                self.conn_cursor.execute(read_req)
+                no_gaps_period = self.conn_cursor.fetchall()
+                self.conn_cursor.reset()
+            except Error as err:
+                err_message = 'error reading data from table no_gaps_periods'
+                logger.error(f'{err_message} {table_name}, {err}')
+                raise exceptions.SQLError(err, err_message)
+            if no_gaps_period:
+                no_gaps_start = no_gaps_period[0][2]
+                no_gaps_end = no_gaps_period[0][3]
+                if start >= no_gaps_start and end <= no_gaps_end:
+                    print(f'found no gaps period {no_gaps_period}')
+                    return []
+
+
         missing = None
         last_entry = None
         # get the last entry in start-end range
@@ -368,6 +390,36 @@ class ConnectionDB:
         #  in case we have empty space between last entry and an "end" we have requested
         if last_entry < end:
             missing.append((last_entry + interval_ms, end))
+
+
+        write_changes = 0
+        if missing is not None and not missing:
+            if no_gaps_start and no_gaps_end: # if there was a no_gaps_period in the table
+                if start < no_gaps_start:
+                    no_gaps_start = start
+                    write_changes = 1
+                if end > no_gaps_end:
+                    no_gaps_end = end
+                    write_changes = 1
+            else:
+                no_gaps_start = start
+                no_gaps_end = end
+                write_changes = 1
+
+            if write_changes:
+                request = f"""
+                REPLACE INTO no_gaps_periods (table_name, start_time, end_time)
+                VALUES ('{table_name}', {no_gaps_start}, {no_gaps_end})
+                """
+                try:
+                    self.conn_cursor.execute(request)
+                    self.conn.commit()
+                except Error as err:
+                    err_message = 'failed to update no_gaps_periods'
+                    logger.error(f'{err_message} {table_name}, {err}')
+                    raise exceptions.SQLError(err, err_message)
+                print(f'updated no_gaps {no_gaps_start}, {no_gaps_end}')
+
 
         return(missing)
 

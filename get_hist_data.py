@@ -1,13 +1,13 @@
-import logging
 import sys
-import pandas as pd
+import logging
+import time
+import asyncio
+from decimal import Decimal
+from datetime import datetime
 from binance.client import Client, AsyncClient
 from binance import exceptions as pybin_exceptions
 from db_interact import ConnectionDB
-import time
-from datetime import datetime
 import exceptions
-import asyncio
 import spooky
 from helper_functions import interval_to_milliseconds, ts_to_date, generate_data, round_timings, round_data,\
     get_data_gaps
@@ -17,6 +17,25 @@ logger = logging.getLogger(__name__)
 rounded_sum = 0
 missing_sum = 0
 candles_loaded = 0
+
+
+# SQL table structure that will be created
+candle_table_structure = [
+    ['id', 'INT', 'AUTO_INCREMENT PRIMARY KEY'],
+    ['open_time', 'BIGINT', 'NOT NULL UNIQUE'],
+    ['open', 'DECIMAL(15,8)', 'NOT NULL'],
+    ['high', 'DECIMAL(15,8)', 'NOT NULL'],
+    ['low', 'DECIMAL(15,8)', 'NOT NULL'],
+    ['close', 'DECIMAL(15,8)', 'NOT NULL'],
+    ['volume', 'DECIMAL(25,8)', 'NOT NULL'],
+    ['close_time', 'BIGINT', 'NOT NULL UNIQUE'],
+    ['quote_vol', 'DECIMAL(25,8)', 'NOT NULL'],
+    ['num_trades', 'BIGINT', 'NOT NULL'],
+    ['buy_base_vol', 'DECIMAL(25,8)', 'NOT NULL'],
+    ['buy_quote_vol', 'DECIMAL(25,8)', 'NOT NULL'],
+    ['ignored', 'DECIMAL(15,8)', ''],
+    ['time_loaded', 'BIGINT']
+]
 
 
 def get_candles_from_db(symbol: str,
@@ -66,7 +85,7 @@ def get_candles_from_db(symbol: str,
     #check if table present, else create
     if not conn_db.table_in_db(table_name):
         logger.debug(f'not found table {table_name}, creating one')
-        if not conn_db.table_create(table_name):
+        if not conn_db.table_create(table_name, candle_table_structure):
             conn_db.close_connection()
             return None
 
@@ -214,13 +233,29 @@ async def write_candles(start_ts, end_ts, client, symbol, interval,
         return (None, timeout_gap)
     else:
         try:
-            conn_db.write(temp_data, table_name)
+            conn_db.write(adapt_data(temp_data), table_name, candle_table_structure)
             return (True, timeout_gap)
         except exceptions.SQLError:
             return (None, timeout_gap)
 
 
-
+# format data to be written into the table
+def adapt_data(data):
+    adapted = [[j[0],  # open_time
+                Decimal(j[1]),  # open
+                Decimal(j[2]),  # high
+                Decimal(j[3]),  # low
+                Decimal(j[4]),  # close
+                Decimal(j[5]),  # volume
+                j[6],  # close_time
+                Decimal(j[7]),  # quote_vol
+                j[8],  # num_trades
+                Decimal(j[9]),  # buy_base_vol
+                Decimal(j[10]),  # buy_quote_vol
+                Decimal(j[11]),  # ignored
+                j[12]  # time loaded
+                ] for j in data]
+    return adapted
 
 
 async def get_candles(start_ts, end_ts, client, symbol, interval, interval_ms, limit):
