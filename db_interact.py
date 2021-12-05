@@ -121,23 +121,6 @@ class ConnectionDB:
             logger.error(f'could not delete table {table_name}, no such table')
 
 
-        if self.table_in_db('no_gaps_periods'):
-            try:
-                delete_table_query = f"""DELETE FROM no_gaps_periods
-                                         WHERE table_name = '{table_name}'
-                                        """
-                self.conn_cursor.execute(delete_table_query)
-                self.conn.commit()
-                logger.debug(f'deleted {table_name} from no_gaps_periods')
-                print(f'deleted {table_name} from no_gaps_periods')
-            except Error as err:
-                err_message = 'unknown error while deleting a table'
-                logger.error(f'{err_message}; {self.database}; {err}')
-                raise exceptions.SQLError(err, err_message)
-        else:
-            logger.error(f'could not delete no_gaps_periods, no such table')
-
-
 
     def table_in_db(self, table_name):
         show_req = f'SHOW TABLES LIKE \'{table_name}\''
@@ -299,38 +282,8 @@ class ConnectionDB:
 
     def get_missing(self, table_name, interval_ms, start, end,  time_col_name='open_time'):
 
-        # access a table that store information about consistency checks
-        # if not present then create
-        # and write down time period that has no gaps in order not to check it second time
-        no_gaps_structure = [
-            ['id', 'INT', 'AUTO_INCREMENT PRIMARY KEY'],
-            ['table_name', 'VARCHAR(20)', 'NOT NULL UNIQUE'],
-            ['start_time', 'BIGINT', 'NOT NULL'],
-            ['end_time', 'BIGINT', 'NOT NULL']
-        ]
-        no_gaps_start, no_gaps_end, no_gaps_period = None, None, None
-        if not self.table_in_db('no_gaps_periods'):
-            self.table_create('no_gaps_periods', no_gaps_structure)
-        else:
-            read_req = f"""
-                    SELECT * FROM no_gaps_periods
-                    WHERE table_name = '{table_name}';
-                    """
-            try:
-                self.conn_cursor.execute(read_req)
-                no_gaps_period = self.conn_cursor.fetchall()
-                self.conn_cursor.reset()
-            except Error as err:
-                err_message = 'error reading data from table no_gaps_periods'
-                logger.error(f'{err_message} {table_name}, {err}')
-                raise exceptions.SQLError(err, err_message)
-            if no_gaps_period:
-                no_gaps_start = no_gaps_period[0][2]
-                no_gaps_end = no_gaps_period[0][3]
-                if start >= no_gaps_start and end <= no_gaps_end:
-                    print(f'found no gaps period {no_gaps_period}')
-                    return []
-
+        if self.check_number_candles_in_period(table_name, interval_ms, start, end, time_col_name='open_time'):
+            return []  # All candles in place, have no gaps.
 
         missing = None
         last_entry = None
@@ -392,38 +345,26 @@ class ConnectionDB:
             missing.append((last_entry + interval_ms, end))
 
 
-        write_changes = 0
-        if missing is not None and not missing:
-            if no_gaps_start and no_gaps_end: # if there was a no_gaps_period in the table
-                if start < no_gaps_start:
-                    no_gaps_start = start
-                    write_changes = 1
-                if end > no_gaps_end:
-                    no_gaps_end = end
-                    write_changes = 1
-            else:
-                no_gaps_start = start
-                no_gaps_end = end
-                write_changes = 1
-
-            if write_changes:
-                request = f"""
-                REPLACE INTO no_gaps_periods (table_name, start_time, end_time)
-                VALUES ('{table_name}', {no_gaps_start}, {no_gaps_end})
-                """
-                try:
-                    self.conn_cursor.execute(request)
-                    self.conn.commit()
-                except Error as err:
-                    err_message = 'failed to update no_gaps_periods'
-                    logger.error(f'{err_message} {table_name}, {err}')
-                    raise exceptions.SQLError(err, err_message)
-                print(f'updated no_gaps {no_gaps_start}, {no_gaps_end}')
-
 
         return(missing)
 
-
+    def check_number_candles_in_period(self, table_name, interval_ms, start, end, time_col_name='open_time'):
+        #  Count number of candles between start and end. If all candles are in place, return True.
+        request = f"""
+                SELECT COUNT({time_col_name}) FROM {table_name}
+                WHERE {time_col_name} BETWEEN {start} AND {end}
+                """
+        try:
+            self.conn_cursor.execute(request)
+            entry_count = self.conn_cursor.fetchone()[0]
+            self.conn_cursor.reset()
+        except Error as err:
+            err_message = 'count entries error'
+            logger.error(f'{err_message}, {table_name}, {err}')
+            return None
+        if entry_count == (end - start) / interval_ms + 1:
+            return True
+        return None
 
 
 
