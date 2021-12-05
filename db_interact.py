@@ -1,17 +1,9 @@
-import time
-
-from mysql.connector import connect, Error, errors
-from getpass import getpass
 import logging
-import sys
-from decimal import Decimal
+
 import exceptions
-from helper_functions import interval_to_milliseconds
+import mysql.connector as mysql_connector
 
 logger = logging.getLogger(__name__)
-
-
-
 
 # this class is used to connect to a MySQL database
 class ConnectionDB:
@@ -31,7 +23,7 @@ class ConnectionDB:
 
     def list_databases(self):
         try:
-            with connect(
+            with mysql_connector.connect(
                     host=self.host,
                     user=self.user,
                     password=self.password
@@ -39,18 +31,18 @@ class ConnectionDB:
                 with connection.cursor() as cursor:
                     cursor.execute('SHOW DATABASES')
                     db_list = cursor.fetchall()
-        except Error as e:
+        except mysql_connector.Error as e:
             logger.error(f'error while doing list_databases() {e}')
         mysql_system_dbs = [('information_schema',), ('mysql',), ('performance_schema',), ('sys',)]
         return [db[0] for db in db_list if db not in mysql_system_dbs]
 
     def connect(self):
         try:
-            self.conn = connect(host=self.host,
-                                user=self.user,
-                                password=self.password,
-                                database=self.database)
-        except Error as err:
+            self.conn = mysql_connector.connect(host=self.host,
+                                                user=self.user,
+                                                password=self.password,
+                                                database=self.database)
+        except mysql_connector.Error as err:
             err_message = 'error while connecting to a database'
             logger.error(f'{err_message} {self.database}; {err}')
             raise exceptions.SQLError(err, err_message)
@@ -66,7 +58,7 @@ class ConnectionDB:
                 self.conn.close()
                 self.connected = False
                 logger.debug(f'closed connection to database {self.database}')
-            except Error as err:
+            except mysql_connector.Error as err:
                 err_message = 'error while closing connection to a database'
                 logger.error(f'{err_message} {self.database}; {err}')
                 raise exceptions.SQLError(err, err_message)
@@ -101,7 +93,7 @@ class ConnectionDB:
                         """
                 self.conn_cursor.execute(create_new_table_query)
                 self.conn.commit()
-            except Error as err:
+            except mysql_connector.Error as err:
                 logger.error(f'could not create table {table_name}, {err}')
                 return None
         return True
@@ -113,7 +105,7 @@ class ConnectionDB:
                 self.conn_cursor.execute(delete_table_query)
                 self.conn.commit()
                 logger.debug(f'deleted table {table_name}')
-            except Error as err:
+            except mysql_connector.Error as err:
                 err_message = 'unknown error while deleting a table'
                 logger.error(f'{err_message}; {self.database}; {err}')
                 raise exceptions.SQLError(err, err_message)
@@ -128,7 +120,7 @@ class ConnectionDB:
         try:
             self.conn_cursor.execute(show_req)
             tables = self.conn_cursor.fetchall()
-        except Error as err:
+        except mysql_connector.Error as err:
             logger.error(f'failed to table_in_db, {err}')
             return None
         if tables:
@@ -140,7 +132,7 @@ class ConnectionDB:
         try:
             self.conn_cursor.execute(show_req)
             tables = self.conn_cursor.fetchall()
-        except Error as err:
+        except mysql_connector.Error as err:
             logger.error(f'failed to list_tables, {err}')
             return None
         return tables
@@ -150,7 +142,7 @@ class ConnectionDB:
             count_req = f'SELECT COUNT(open_time) FROM {table_name}'
             self.conn_cursor.execute(count_req)
             return self.conn_cursor.fetchone()[0]
-        except Error as err:
+        except mysql_connector.Error as err:
             logger.error(f'failed to count_rows, {err}')
             return None
 
@@ -174,10 +166,10 @@ class ConnectionDB:
         add_req = ' '.join(add_req.split())
         try:
             self.conn_cursor.execute(add_req)
-        except errors.ProgrammingError as err:
+        except mysql_connector.errors.ProgrammingError as err:
             if 'Duplicate column name' in str(err):
                 logger.debug(f'tried to insert a duplicate column{column_name}')
-        except Error as err:
+        except mysql_connector.Error as err:
             err_message = 'failed to insert column'
             logger.error(f'{err_message}, {err}')
             raise exceptions.SQLError(err, err_message)
@@ -196,7 +188,7 @@ class ConnectionDB:
             self.conn_cursor.reset()
             if fetch:
                 last_id = fetch[0]
-        except Error as err:
+        except mysql_connector.Error as err:
             logger.error(f'failed to get last id from table {table_name}, {err}')
         return last_id
 
@@ -213,7 +205,7 @@ class ConnectionDB:
             self.conn_cursor.reset()
             if only_count:
                 return [first_entry, last_entry, count]
-        except Error as err:
+        except mysql_connector.Error as err:
             logger.error(f'failed to count_rows, {err}')
             return [first_entry, last_entry, count]
 
@@ -236,7 +228,7 @@ class ConnectionDB:
                 last_entry = self.conn_cursor.fetchone()[0]
                 self.conn_cursor.reset()
 
-            except Error as err:
+            except mysql_connector.Error as err:
                 logger.error(f'failed to get first and last entry from table {table_name}, {err}')
 
         return [first_entry, last_entry, count]
@@ -256,7 +248,7 @@ class ConnectionDB:
         try:
             self.conn_cursor.executemany(insert_req, data)
             self.conn.commit()
-        except Error as err:
+        except mysql_connector.Error as err:
             err_message = 'error writing data into table'
             logger.error(f'{err_message} {table_name}, {err}')
             raise exceptions.SQLError(err, err_message)
@@ -272,7 +264,7 @@ class ConnectionDB:
             fetch = self.conn_cursor.fetchall()
             self.conn_cursor.reset()
             return fetch
-        except Error as err:
+        except mysql_connector.Error as err:
             err_message = 'error reading data from table'
             logger.error(f'{err_message} {table_name}, {err}')
             raise exceptions.SQLError(err, err_message)
@@ -296,7 +288,7 @@ class ConnectionDB:
             self.conn_cursor.execute(request)
             last_entry = self.conn_cursor.fetchone()[0]
             self.conn_cursor.reset()
-        except Error as err:
+        except mysql_connector.Error as err:
             err_message = 'get gaps, error finding last entry'
             logger.error(f'{err_message} {table_name}, {err}')
             raise exceptions.SQLError(err, err_message)
@@ -335,7 +327,7 @@ class ConnectionDB:
             missing = self.conn_cursor.fetchall()
             self.conn_cursor.reset()
 
-        except Error as err:
+        except mysql_connector.Error as err:
             err_message = 'error searching for gaps in table'
             logger.error(f'{err_message} {table_name}, {err}')
             raise exceptions.SQLError(err, err_message)
@@ -358,7 +350,7 @@ class ConnectionDB:
             self.conn_cursor.execute(request)
             entry_count = self.conn_cursor.fetchone()[0]
             self.conn_cursor.reset()
-        except Error as err:
+        except mysql_connector.Error as err:
             err_message = 'count entries error'
             logger.error(f'{err_message}, {table_name}, {err}')
             return None

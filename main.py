@@ -3,9 +3,11 @@
 import logging
 import sys
 import time
-
+import get_hist_data as ghd  # aiohttp should be imported before mysql.connector
 import db_interact as db
-import get_hist_data as ghd
+
+
+
 import spooky
 
 logging.basicConfig(
@@ -37,7 +39,5 @@ if __name__ == '__main__':
     #1502668800000 default start
     #end_ts = int(time.time() * 1000) = now
     start = time.perf_counter()
-    ghd.get_candles_from_db('BTCUSDT', '1m', start_ts=1502668800000, end_ts=int(time.time() * 1000)-60000*28)
+    ghd.get_candles_from_db('BTCUSDT', '1m', start_ts=1502668800000, end_ts=int(time.time() * 1000) - 60000 * 20)
     print(f'it took {time.perf_counter() - start}')
-
-

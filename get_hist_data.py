@@ -1,15 +1,16 @@
-import sys
-import logging
-import time
 import asyncio
+import logging
+import sys
+import time
 from decimal import Decimal
-from datetime import datetime
-from binance.client import Client, AsyncClient
-from binance import exceptions as pybin_exceptions
-from db_interact import ConnectionDB
+
+import aiohttp
+import db_interact as db
 import exceptions
 import spooky
-from helper_functions import interval_to_milliseconds, ts_to_date, generate_data, round_timings, round_data,\
+from binance import exceptions as pybin_exceptions
+from binance.client import AsyncClient
+from helper_functions import interval_to_milliseconds, ts_to_date, generate_data, round_timings, round_data, \
     get_data_gaps
 
 logger = logging.getLogger(__name__)
@@ -17,7 +18,6 @@ logger = logging.getLogger(__name__)
 rounded_sum = 0
 missing_sum = 0
 candles_loaded = 0
-
 
 # SQL table structure that will be created
 candle_table_structure = [
@@ -73,10 +73,10 @@ def get_candles_from_db(symbol: str,
           f'{ts_to_date(end_ts)} {end_ts}')
 
     # connecting to database
-    conn_db = ConnectionDB(host=spooky.creds['host'],
-                           user=spooky.creds['user'],
-                           password=spooky.creds['password'],
-                           database=spooky.creds['database'])
+    conn_db = db.ConnectionDB(host=spooky.creds['host'],
+                              user=spooky.creds['user'],
+                              password=spooky.creds['password'],
+                              database=spooky.creds['database'])
     try:
         conn_db.connect()
     except exceptions.SQLError:
@@ -114,7 +114,7 @@ def get_candles_from_db(symbol: str,
                                                  limit, max_coroutines)):
                 logger.error('get_write_candles failed.')
                 conn_db.close_connection()
-                return None # not going to happen, because get_write_candles doesn't return False or None
+                return None
 
 
     _, _, count_written = conn_db.get_start_end_later_than(table_name, last_entry_id, only_count=True)
@@ -141,7 +141,13 @@ async def get_write_candles(conn_db, symbol, table_name, interval: str, interval
     last_entry_id = conn_db.get_latest_id(table_name)
 
     #  Create the Binance client, no need for api key.
-    exchange_client = await AsyncClient.create(requests_params = {"timeout": 60})
+
+    try:
+        exchange_client = await AsyncClient.create(requests_params={"timeout": 60})
+    except aiohttp.client_exceptions.ClientConnectorCertificateError as err:
+        logger.error(f'ClientConnectorCertificateError: {err}, try importing aiohttp prior to everything else')
+        return None
+
     periods = get_limit_intervals(start_ts, end_ts, interval_ms, limit)
 
     #  If we have too many concurrent requests at the same time, some of them get timeouted.

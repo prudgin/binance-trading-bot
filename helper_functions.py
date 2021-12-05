@@ -1,8 +1,7 @@
+import logging
 from datetime import datetime
 import dateparser
 import pytz
-import logging
-import time
 
 logger = logging.getLogger(__name__)
 
