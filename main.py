@@ -3,11 +3,10 @@
 import logging
 import sys
 import time
-import asyncio
-import spooky
-import exceptions
-import get_hist_data as ghd
+
 import db_interact as db
+import get_hist_data as ghd
+import spooky
 
 logging.basicConfig(
     # filename='get_hist_data.log',
@@ -38,7 +37,7 @@ if __name__ == '__main__':
     #1502668800000 default start
     #end_ts = int(time.time() * 1000) = now
     start = time.perf_counter()
-    ghd.get_candles_from_db('BTCUSDT', '1m', start_ts=1502668800000, end_ts=int(time.time() * 1000)-60000*29)
+    ghd.get_candles_from_db('BTCUSDT', '1m', start_ts=1502668800000, end_ts=int(time.time() * 1000)-60000*28)
     print(f'it took {time.perf_counter() - start}')
 
 
