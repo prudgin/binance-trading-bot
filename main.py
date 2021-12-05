@@ -38,7 +38,7 @@ if __name__ == '__main__':
     #1502668800000 default start
     #end_ts = int(time.time() * 1000) = now
     start = time.perf_counter()
-    ghd.get_candles_from_db('BTCUSDT', '1m', start_ts=1502668800000, end_ts=int(time.time() * 1000)-60000*30)
+    ghd.get_candles_from_db('BTCUSDT', '1m', start_ts=1502668800000, end_ts=int(time.time() * 1000)-60000*29)
     print(f'it took {time.perf_counter() - start}')
 
 
