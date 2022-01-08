@@ -2,10 +2,22 @@ import logging
 from datetime import datetime
 import dateparser
 import pytz
+import time
+import functools
 
 logger = logging.getLogger(__name__)
 
 
+def timer(func):
+    """Print the runtime of the decorated function"""
+    @functools.wraps(func)
+    def wrapper_timer(*args, **kwargs):
+        start = time.perf_counter()
+        val = func(*args, **kwargs)
+        time_taken = time.perf_counter() - start
+        print(f'{func.__name__} took {time_taken}s to execute')
+        return val
+    return wrapper_timer
 
 def date_to_milliseconds(date_str):
     """Convert UTC date to milliseconds
@@ -33,10 +45,11 @@ def ts_to_date(ts):
 
 def interval_to_milliseconds(interval):
     """Convert a Binance interval string to milliseconds
-    :param interval: Binance interval string 1m, 3m, 5m, 15m, 30m, 1h, 2h, 4h, 6h, 8h, 12h, 1d, 3d, 1w
+    1 jan 1970 was thursday, I found this out too late, so the program don't accept 1w interwals
+    :param interval: Binance interval string 1m, 3m, 5m, 15m, 30m, 1h, 2h, 4h, 6h, 8h, 12h, 1d, 3d
     :type interval: str
     :return:
-         None if unit not one of m, h, d or w
+         None if unit not one of m, h, d
          None if string not in correct format
          int value of interval in milliseconds
     """
@@ -45,7 +58,6 @@ def interval_to_milliseconds(interval):
         "m": 60,
         "h": 60 * 60,
         "d": 24 * 60 * 60,
-        "w": 7 * 24 * 60 * 60
     }
 
     unit = interval[-1]
@@ -57,7 +69,7 @@ def interval_to_milliseconds(interval):
                          f' was expecting int, got {interval[:-1]}')
     else:
         logger.error(f'interval_to_milliseconds got invalid interval unit {unit},'
-                     f'valid interval units are: m, h, d, w')
+                     f'valid interval units are: m, h, d')
     return ms
 
 def round_timings(start_ts, end_ts, interval_ms):
@@ -86,7 +98,6 @@ def round_data(temp_data, interval_ms):
     rounded_count = sum([i[0] for i in rounded_data])
     rounded_data = [i[1:] for i in rounded_data]
     return rounded_data, rounded_count
-
 
 
 def generate_data(start_ts, end_ts, interval_ms):
@@ -136,14 +147,15 @@ def get_data_gaps(temp_data, start_ts, end_ts, interval_ms):
 
     return gaps_list
 
+
 if __name__ == '__main__':
 
     interval_ms = 2
     start_ts = 0
     end_ts = 30
 
-    temp_data = generate_data(10, 14, interval_ms) +\
-                generate_data(18, 20, interval_ms) +\
+    temp_data = generate_data(10, 14, interval_ms) + \
+                generate_data(18, 20, interval_ms) + \
                 generate_data(26, 28, interval_ms)
 
     temp_data = []
@@ -158,7 +170,7 @@ if __name__ == '__main__':
     shift = 0
 
     for gap in temp_gaps:
-        insert_index = gap[2]+shift
+        insert_index = gap[2] + shift
         generated = generate_data(gap[0], gap[1], interval_ms)
         temp_data[insert_index:insert_index] = generated
         shift += len(generated)

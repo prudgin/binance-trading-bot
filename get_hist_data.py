@@ -63,11 +63,12 @@ def get_candles_from_db(symbol: str,
 
     # table names for each symbol and interval are created this way:
     table_name = f'{symbol}{interval}Hist'
+    print(f'requested candles from {start_ts} {ts_to_date(start_ts)} to '
+          f'{ts_to_date(end_ts)} {end_ts}')
 
-    if end_ts - start_ts < interval_ms:
+    if end_ts < start_ts:
         logger.warning('interval between requested start an end dates < chart interval, abort')
         return None
-
     start_ts, end_ts = round_timings(start_ts, end_ts, interval_ms)
     print(f'going to fetch candles from {start_ts} {ts_to_date(start_ts)} to '
           f'{ts_to_date(end_ts)} {end_ts}')
@@ -96,7 +97,7 @@ def get_candles_from_db(symbol: str,
     # check if requested data is present in database
     # search for gaps in interval from start_ts to end_ts, gap = absence of data in database
     # gaps is a list of tuples [(gap1_start, gap1_end), (gap2_start, gap2_end), ...]
-    # returns None if case of error
+    # returns None in case of error
     gaps = get_gaps(conn_db, table_name, interval_ms, start_ts, end_ts)
     if gaps is None: # get_gaps function encountered an error
         logger.error('get_gaps function returned None')
@@ -118,18 +119,21 @@ def get_candles_from_db(symbol: str,
 
 
     _, _, count_written = conn_db.get_start_end_later_than(table_name, last_entry_id, only_count=True)
-    print(f'wrote {count_written} candles to db')
+    if count_written:
+        print(f'wrote {count_written} candles to db')
 
     #  ok, we tried to get data from exchange, now just fetch from database:
     logger.debug('reading from db: conn_db.read()')
     fetch = None
-    #fetch = conn_db.read(table_name, start_ts, end_ts)
+    fetch = conn_db.read(table_name, start_ts, end_ts)
+    if fetch:
+        print(f'fetched {len(fetch)} candles from the database')
     try:
         conn_db.close_connection()
     except exceptions.SQLError:
         logger.error('failed to close connection to a database')
 
-    return fetch
+    return fetch # order of returned list is reversed, the list is like [oldest, old, new, newest].
 
 
 
@@ -308,6 +312,7 @@ async def get_candles(start_ts, end_ts, client, symbol, interval, interval_ms, l
     timeout_gap = []
 
     try:
+        # if start_ts = end_ts, this will return one candle with open_time = start_ts
         temp_data = await client.get_klines(
             symbol=symbol,
             interval=interval,

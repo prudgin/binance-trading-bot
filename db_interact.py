@@ -2,6 +2,7 @@ import logging
 
 import exceptions
 import mysql.connector as mysql_connector
+import helper_functions as helpers
 
 logger = logging.getLogger(__name__)
 
@@ -257,12 +258,13 @@ class ConnectionDB:
         read_req = f"""
                 SELECT * FROM {table_name}
                 WHERE {time_col_name} BETWEEN {start_ts} AND {end_ts}
-                ORDER BY {time_col_name};
+                ORDER BY {time_col_name} DESC;
                 """
         try:
             self.conn_cursor.execute(read_req)
             fetch = self.conn_cursor.fetchall()
             self.conn_cursor.reset()
+
             return fetch
         except mysql_connector.Error as err:
             err_message = 'error reading data from table'
@@ -271,8 +273,8 @@ class ConnectionDB:
 
 
 
-
     def get_missing(self, table_name, interval_ms, start, end,  time_col_name='open_time'):
+
 
         if self.check_number_candles_in_period(table_name, interval_ms, start, end, time_col_name='open_time'):
             return []  # All candles in place, have no gaps.
@@ -327,6 +329,7 @@ class ConnectionDB:
             missing = self.conn_cursor.fetchall()
             self.conn_cursor.reset()
 
+
         except mysql_connector.Error as err:
             err_message = 'error searching for gaps in table'
             logger.error(f'{err_message} {table_name}, {err}')
@@ -341,6 +344,7 @@ class ConnectionDB:
         return(missing)
 
     def check_number_candles_in_period(self, table_name, interval_ms, start, end, time_col_name='open_time'):
+        start, end = helpers.round_timings(start, end, interval_ms)
         #  Count number of candles between start and end. If all candles are in place, return True.
         request = f"""
                 SELECT COUNT({time_col_name}) FROM {table_name}
