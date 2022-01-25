@@ -1,4 +1,6 @@
 from abc import ABCMeta, abstractmethod
+import decimal
+import collections
 import pandas as pd
 import get_hist_data as ghd
 import events
@@ -17,10 +19,9 @@ class DataHandler(object):
     __metaclass__ = ABCMeta
 
     @abstractmethod
-    def get_latest_bars(self, symbol, N=1):
+    def get_buffered_bars(self, symbol, N=1):
         """
-        Returns the last N bars from the latest_symbol list,
-        or fewer if less bars are available.
+        Returns the last N bars from the buffered_data queue,
         """
         raise NotImplementedError("Should implement get_latest_bars()")
 
@@ -41,7 +42,7 @@ class HistoricDataHandler(DataHandler):
     trading interface.
     """
 
-    def __init__(self, events, symbol, interval, start_ts, end_ts):
+    def __init__(self, events, symbol, interval, start_ts, end_ts, max_buffer_size):
         """
         Initialises the historic data handler.
         :param events: the events queue
@@ -49,6 +50,7 @@ class HistoricDataHandler(DataHandler):
         :param interval: Binance interval string 1m, 3m, 5m, 15m, 30m, 1h, 2h, 4h, 6h, 8h, 12h, 1d, 3d
         :param start_ts: backtester start timestamp
         :param end_ts: backtester stop timestamp
+        :param latest_data_maxlen: max length of latest_symbol_data, where we append new candles
         """
 
         self.events = events
@@ -57,40 +59,45 @@ class HistoricDataHandler(DataHandler):
         self.start_ts = start_ts
         self.end_ts = end_ts
 
-        self.symbol_data = {}
-        self.latest_symbol_data = []
+        self.historical_data = []
+        self.buffered_data = collections.deque(maxlen=max_buffer_size)
         self.continue_backtest = True
         self.load_historical_data()
 
     def load_historical_data(self):
         #  returns a list of tuples, each representing a candle, returned in desc order, so we can pop from list
-        self.symbol_data = ghd.get_candles_from_db(self.symbol, self.interval, self.start_ts, self.end_ts)
+        #  OHLC and volumes are stored as decimals in the database, so they are returned. I dunno why.
+        self.historical_data = ghd.get_candles_from_db(self.symbol, self.interval, self.start_ts, self.end_ts)
+        if not self.historical_data:
+            self.continue_backtest = False
 
-    def _get_new_bar(self):
+    def _pop_new_bar(self) -> dict:
         """
-        Returns the latest bar from the data feed as a tuple of
-        (id, open_time, open, high, low, close, volume, close_time,
-         quote_vol, num_trades, buy_base_vol, buy_quote_vol, ignored, time_loaded).
+        :return: Dict. The latest bar from the data feed.
         """
-        return self.symbol_data.pop()
+        #  transform all decimals in float. For fuck sake. Fuck decimal.
+        new_raw_bar = [float(i) if isinstance(i, decimal.Decimal) else i for i in self.historical_data.pop()]
+        #  if list is empty after pop, don't go on the nex loop
+        if not self.historical_data:
+            self.continue_backtest = False
+        keys = ['open_time', 'open', 'high', 'low', 'close', 'volume', 'close_time',
+         'quote_vol', 'num_trades', 'buy_base_vol', 'buy_quote_vol']
+        return dict(zip(keys,new_raw_bar))
+
+        # should think of something in case of recieving multiple bars while live trading
 
     def update_bars(self):
         """
-        Pushes the latest bar to the latest_symbol_data structure.
+        Pushes the latest bar to the buffered_data queue.
         """
-        if self.symbol_data:
-            bar = self._get_new_bar()
-            self.latest_symbol_data.append(bar)
-        else:
-            self.continue_backtest = False
+        self.buffered_data.append(self._pop_new_bar())
         self.events.put(events.MarketEvent())
 
-    def get_latest_bars(self, N=1):
+    def get_buffered_bars(self, N=1) -> list:
         """
-        Returns the last N bars from the latest_symbol list,
-        or N-k if less available.
+        :return: list of dicts. the last N bars from the buffered_data queue
         """
-        if len(self.latest_symbol_data) >= N:
-            return self.latest_symbol_data[-N:]
+        if len(self.buffered_data) >= N:
+            return list(self.buffered_data)[-N:]
         else:
             return None

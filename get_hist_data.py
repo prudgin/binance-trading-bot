@@ -43,7 +43,8 @@ def get_candles_from_db(symbol: str,
                         start_ts: int,
                         end_ts: int,
                         limit=500,
-                        max_coroutines=10):
+                        max_coroutines=10,
+                        reversed_order=True):
     """
     :param symbol:
     :param interval:
@@ -53,6 +54,11 @@ def get_candles_from_db(symbol: str,
     :param max_coroutines:
     :return: list of lists
     returns candles with open_time fall in: start_ts <= open_time <= end_ts
+    if reversed_order = True, candles are sorted from newer to older, the list be [new, old]
+    it is needed to pop older first from list
+    returns a list of (open_time, open, high, low, close, volume, close_time,
+         quote_vol, num_trades, buy_base_vol, buy_quote_vol)
+         quote_vol, num_trades, buy_base_vol, buy_quote_vol)
     exceptions scheme:
     this function raises no exceptions, tries to catch all, and returns None if exception
     interval_to_milliseconds : None
@@ -110,7 +116,7 @@ def get_candles_from_db(symbol: str,
         for gap in gaps:
             print(f'  loading gap from exchange: {gap[0]} {ts_to_date(gap[0])} - {ts_to_date(gap[1])} {gap[1]}')
 
-            # get candles covering gap from exchange and write them in database
+            # get candles covering gap from exchange and write them in the database
             if not asyncio.run(get_write_candles(conn_db, symbol, table_name, interval, interval_ms, gap[0], gap[1],
                                                  limit, max_coroutines)):
                 logger.error('get_write_candles failed.')
@@ -125,7 +131,7 @@ def get_candles_from_db(symbol: str,
     #  ok, we tried to get data from exchange, now just fetch from database:
     logger.debug('reading from db: conn_db.read()')
     fetch = None
-    fetch = conn_db.read(table_name, start_ts, end_ts)
+    fetch = conn_db.read(table_name, start_ts, end_ts, reversed_order=reversed_order)
     if fetch:
         print(f'fetched {len(fetch)} candles from the database')
     try:
@@ -133,7 +139,7 @@ def get_candles_from_db(symbol: str,
     except exceptions.SQLError:
         logger.error('failed to close connection to a database')
 
-    return fetch # order of returned list is reversed, the list is like [oldest, old, new, newest].
+    return fetch
 
 
 
@@ -152,6 +158,7 @@ async def get_write_candles(conn_db, symbol, table_name, interval: str, interval
         logger.error(f'ClientConnectorCertificateError: {err}, try importing aiohttp prior to everything else')
         return None
 
+    #  break the timeline of interest into periods, each period will get it's own concurrent worker
     periods = get_limit_intervals(start_ts, end_ts, interval_ms, limit)
 
     #  If we have too many concurrent requests at the same time, some of them get timeouted.
@@ -166,7 +173,7 @@ async def get_write_candles(conn_db, symbol, table_name, interval: str, interval
         if (
                 not timeout_gaps or  #  Stop cycle if we recieve no timeout errors from exchange.
                 len(timeout_gaps) == len(periods) or  #  or if recieve same number of timeouts as the last iteration.
-                i > 10  #  Just in case. Just to be on the safe side. I hate getting stuck in infinite loops.
+                i > 10  #  Just in case. Just to be on the safe side. I am afraid of getting stuck in infinite loops.
         ): break
         print(f'   Got timeouts from exchange, going to iterate one more time. Iteration N {i}.\n'
               f'   Consider lowering max_coroutines parameter in get_candles_from_db function.')

@@ -1,21 +1,26 @@
 import queue
 import data
 import events
+import strategy
 
 events = queue.Queue()
 
-bars = data.HistoricDataHandler(events, 'BTCUSDT', '1d', start_ts=1543104000000,
-                                end_ts=1543104000000 - 1 + 60000 * 60 * 100)
+ema_strategy = strategy.EMAStrategy(events, 5, max_buffer_size=20)
 
-# strategy = Strategy(...)
+data_handler = data.HistoricDataHandler(events, 'BTCUSDT', '1h', start_ts=1543104000000,
+                                end_ts=1543104000000 - 1 + 60000 * 60 * 20,
+                                max_buffer_size=20)
+
+
 # portfolio = Portfolio(...)
 # broker = ExecutionHandler(...)
 
 
 while True:
     # Update the bars
-    if bars.continue_backtest:
-        bars.update_bars()
+    if data_handler.continue_backtest:
+        #  get new bar from data feed, append it to buffer (queue)
+        data_handler.update_bars()
     else:
         break
     # Process event queue until it's empty
@@ -26,9 +31,8 @@ while True:
             break
 
         if event.type == 'MARKET':
-            pass
-            # strategy.calculate_signals(event)
-            # portfolio.update_timeindex(event)  # Part V
+            ema_strategy.calculate_signals(data_handler.buffered_data)
+            #portfolio.update_timeindex(event)  # Part V
 
         elif event.type == 'SIGNAL':
             pass

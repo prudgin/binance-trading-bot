@@ -4,8 +4,22 @@ import dateparser
 import pytz
 import time
 import functools
+import mplfinance as mpf
+import pandas as pd
 
 logger = logging.getLogger(__name__)
+
+
+def prepare_df_for_plotting(df: pd.DataFrame):
+    """
+    copies an existing df!!!
+    :param df: DataFrame with open_time column of timestamps in ms
+    :return:
+    """
+    plot_df = df[['open_time', 'open', 'high', 'low', 'close']].copy(deep=True)
+    plot_df['open_time'] = pd.to_datetime(plot_df['open_time'], unit='ms')
+    plot_df = plot_df.set_index('open_time')
+    return plot_df.astype('float')
 
 
 def timer(func):

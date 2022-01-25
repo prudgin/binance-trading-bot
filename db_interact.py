@@ -254,11 +254,19 @@ class ConnectionDB:
             logger.error(f'{err_message} {table_name}, {err}')
             raise exceptions.SQLError(err, err_message)
 
-    def read(self, table_name, start_ts, end_ts, time_col_name='open_time'):
+    def read(self, table_name, start_ts, end_ts, time_col_name='open_time', reversed_order=True):
+        """returns candles from database in a form of
+        (open_time, open, high, low, close, volume, close_time,
+         quote_vol, num_trades, buy_base_vol, buy_quote_vol)"""
+        if reversed_order:
+            order = 'DESC'
+        else:
+            order = 'ASC'
         read_req = f"""
-                SELECT * FROM {table_name}
+                SELECT open_time, open, high, low, close, volume, close_time,
+         quote_vol, num_trades, buy_base_vol, buy_quote_vol FROM {table_name}
                 WHERE {time_col_name} BETWEEN {start_ts} AND {end_ts}
-                ORDER BY {time_col_name} DESC;
+                ORDER BY {time_col_name} {order};
                 """
         try:
             self.conn_cursor.execute(read_req)
