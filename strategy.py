@@ -46,40 +46,16 @@ class EMAStrategy(Strategy):
         self.n = n
         self.buffer = collections.deque(maxlen=max_buffer_size)
 
-    def calculate_signals(self, buffered_data: collections.deque):
-        # here we suppose that feed_data is indexed by time and uniform. Need to assert this.
-        feed_data = list(buffered_data)  # ve have a list of dicts now
+        self.ema_indicator = indicators.EMA(self.n, max_buffer_size)
 
-        alpha = 2 / (self.n + 1)
+    def calculate_signals(self, data_feed: collections.deque):
 
-        if not self.buffer:
-            last = 0
-        else:
-            last = self.buffer[-1]['open_time']
+        self.ema_indicator.fill_buffer(data_feed)
+        self.buffer = self.ema_indicator.buffer
 
-
-        #  most of the times feed_data is only 1 bar ahead, check it
-        if ((len(feed_data) >= 2 and len(self.buffer) >= 1) and
-                feed_data[-2]['open_time'] == self.buffer[-1]['open_time']):
-            ema = alpha * feed_data[-1]['close'] + (1 - alpha) * self.buffer[-1]['ema']
-            self.buffer.append({
-                'open_time': feed_data[-1]['open_time'],
-                'ema': ema
-            })
-        else:
-            #  self.buffer is more than 1 block behind feed_data, need to iterate
-            for bar in feed_data:
-                if bar['open_time'] > last:
-                    if last == 0:
-                        ema = bar['close']
-                    else:
-                        ema = alpha * bar['close'] + (1 - alpha) * self.buffer[-1]['ema']
-                    self.buffer.append({
-                        'open_time': bar['open_time'],
-                        'ema': ema
-                    })
 
         if len(self.buffer) > 4:
+            feed_data = list(data_feed)  # ve have a list of dicts now
 
             tal_ema = talib.EMA(np.asarray([float(i['close']) for i in feed_data]), timeperiod=self.n)
 
