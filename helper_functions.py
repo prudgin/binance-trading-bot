@@ -19,7 +19,7 @@ def prepare_df_for_plotting(df: pd.DataFrame):
     plot_df = df[['open_time', 'open', 'high', 'low', 'close']].copy(deep=True)
     plot_df['open_time'] = pd.to_datetime(plot_df['open_time'], unit='ms')
     plot_df = plot_df.set_index('open_time')
-    return plot_df.astype('float')
+    return plot_df
 
 
 def timer(func):

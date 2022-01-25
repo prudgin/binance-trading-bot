@@ -23,17 +23,17 @@ candles_loaded = 0
 candle_table_structure = [
     ['id', 'INT', 'AUTO_INCREMENT PRIMARY KEY'],
     ['open_time', 'BIGINT', 'NOT NULL UNIQUE'],
-    ['open', 'DECIMAL(15,8)', 'NOT NULL'],
-    ['high', 'DECIMAL(15,8)', 'NOT NULL'],
-    ['low', 'DECIMAL(15,8)', 'NOT NULL'],
-    ['close', 'DECIMAL(15,8)', 'NOT NULL'],
-    ['volume', 'DECIMAL(25,8)', 'NOT NULL'],
+    ['open', 'DOUBLE(15,8)', 'NOT NULL'],
+    ['high', 'DOUBLE(15,8)', 'NOT NULL'],
+    ['low', 'DOUBLE(15,8)', 'NOT NULL'],
+    ['close', 'DOUBLE(15,8)', 'NOT NULL'],
+    ['volume', 'DOUBLE(25,8)', 'NOT NULL'],
     ['close_time', 'BIGINT', 'NOT NULL UNIQUE'],
-    ['quote_vol', 'DECIMAL(25,8)', 'NOT NULL'],
+    ['quote_vol', 'DOUBLE(25,8)', 'NOT NULL'],
     ['num_trades', 'BIGINT', 'NOT NULL'],
-    ['buy_base_vol', 'DECIMAL(25,8)', 'NOT NULL'],
-    ['buy_quote_vol', 'DECIMAL(25,8)', 'NOT NULL'],
-    ['ignored', 'DECIMAL(15,8)', ''],
+    ['buy_base_vol', 'DOUBLE(25,8)', 'NOT NULL'],
+    ['buy_quote_vol', 'DOUBLE(25,8)', 'NOT NULL'],
+    ['ignored', 'DOUBLE(15,8)', ''],
     ['time_loaded', 'BIGINT']
 ]
 
@@ -250,13 +250,14 @@ async def write_candles(start_ts, end_ts, client, symbol, interval,
         return (None, timeout_gap)
     else:
         try:
-            conn_db.write(adapt_data(temp_data), table_name, candle_table_structure)
+            conn_db.write(temp_data, table_name, candle_table_structure)
             return (True, timeout_gap)
         except exceptions.SQLError:
             return (None, timeout_gap)
 
 
 # format data to be written into the table
+# not used anywhere, lol
 def adapt_data(data):
     adapted = [[j[0],  # open_time
                 Decimal(j[1]),  # open

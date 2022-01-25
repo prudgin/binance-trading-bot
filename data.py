@@ -66,7 +66,6 @@ class HistoricDataHandler(DataHandler):
 
     def load_historical_data(self):
         #  returns a list of tuples, each representing a candle, returned in desc order, so we can pop from list
-        #  OHLC and volumes are stored as decimals in the database, so they are returned. I dunno why.
         self.historical_data = ghd.get_candles_from_db(self.symbol, self.interval, self.start_ts, self.end_ts)
         if not self.historical_data:
             self.continue_backtest = False
@@ -75,8 +74,7 @@ class HistoricDataHandler(DataHandler):
         """
         :return: Dict. The latest bar from the data feed.
         """
-        #  transform all decimals in float. For fuck sake. Fuck decimal.
-        new_raw_bar = [float(i) if isinstance(i, decimal.Decimal) else i for i in self.historical_data.pop()]
+        new_raw_bar = self.historical_data.pop()
         #  if list is empty after pop, don't go on the nex loop
         if not self.historical_data:
             self.continue_backtest = False

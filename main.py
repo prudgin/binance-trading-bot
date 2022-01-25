@@ -47,7 +47,7 @@ if __name__ == '__main__':
     tracemalloc.start()
 
     fetch = ghd.get_candles_from_db('BTCUSDT', '1d', start_ts=1543104000000,
-                                    end_ts=1543104000000 - 1 + 60000 * 60 * 100)
+                                    end_ts=1543104000000 - 1 + 60000 * 60 * 10)
     for candle in fetch:
         print(f'id: {candle[0]}; '
               f'open: {hlp.ts_to_date(candle[1])}; '
