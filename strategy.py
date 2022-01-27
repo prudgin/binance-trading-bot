@@ -1,5 +1,8 @@
 from abc import ABCMeta, abstractmethod
+import math
 import collections
+import time
+
 import mplfinance as mpf
 import pandas as pd
 import numpy as np
@@ -7,6 +10,7 @@ import talib
 
 import helper_functions as hlp
 import indicators
+import events
 
 
 class Strategy(object):
@@ -38,21 +42,61 @@ class EMAStrategy(Strategy):
     This is an extremely simple strategy
     """
 
-    def __init__(self, events, n, max_buffer_size):
+    def __init__(self, events, symbol, fast, slow, max_buffer_size):
         """
         Initialises the EMA strategy.
         """
+        self.threshold = 0  # TODO add threshold for how small ema difference should be treated as a signal
+        self.symbol = symbol
         self.events = events
-        self.n = n
         self.buffer = collections.deque(maxlen=max_buffer_size)
+        self.state = 0  # are we long, short or out of market? [-1, 0, 1]
 
-        self.ema_indicator = indicators.EMA(self.n)
+        self.ema_fast = indicators.EMA(fast)
+        self.ema_slow = indicators.EMA(slow)
 
     def calculate_signals(self, data_feed: dict):
         #  TODO: in live trading data feed can be a bunch of canldes, not just one
         #   if for example we download them after restoring lost connection to exchange
 
-        self.buffer.append(self.ema_indicator.calculate_next(data_feed))
+        slow_name = self.ema_slow.name
+        fast_name = self.ema_fast.name
 
+        self.ema_fast.calculate_next(data_feed)
+        self.ema_slow.calculate_next(data_feed)
+        self.buffer.append({
+            'open_time': data_feed['open_time'],
+            fast_name: self.ema_fast.last_entry,
+            slow_name: self.ema_slow.last_entry,
+        })
+        signal_fired = 0
+        #  ema is an unstable function, so we can act only after the period of instability has passed
+        if len(self.buffer) > self.ema_slow.n:
+            curr_diff = self.buffer[-1][fast_name] - self.buffer[-1][slow_name]
+            prev_diff = self.buffer[-2][fast_name] - self.buffer[-2][slow_name]
+            sign = lambda x: math.copysign(1, x) if x else 0
+            curr_sign, prev_sign = sign(curr_diff), sign(prev_diff)
 
+            if prev_sign > 0 and curr_sign < 0:
+                self.state = -1
+                signal_fired = 'SHORT'
+            if prev_sign < 0 and curr_sign > 0:
+                self.state = 1
+                signal_fired = 'LONG'
+            if prev_sign == 0:
+                if curr_sign > 0 and self.state <= 0:
+                    self.state = 1
+                    signal_fired = 'LONG'
+                if curr_sign < 0 and self.state >= 0:
+                    self.state = -1
+                    signal_fired = 'SHORT'
 
+            if signal_fired:
+                print(f'Fired a signal: {signal_fired}')
+                self.events.put(
+                    events.SignalEvent(
+                        self.symbol,
+                        int(time.time() * 1000),
+                        signal_fired
+                    )
+                )
