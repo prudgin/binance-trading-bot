@@ -46,33 +46,13 @@ class EMAStrategy(Strategy):
         self.n = n
         self.buffer = collections.deque(maxlen=max_buffer_size)
 
-        self.ema_indicator = indicators.EMA(self.n, max_buffer_size)
+        self.ema_indicator = indicators.EMA(self.n)
 
-    def calculate_signals(self, data_feed: collections.deque):
+    def calculate_signals(self, data_feed: dict):
+        #  TODO: in live trading data feed can be a bunch of canldes, not just one
+        #   if for example we download them after restoring lost connection to exchange
 
-        self.ema_indicator.fill_buffer(data_feed)
-        self.buffer = self.ema_indicator.buffer
-
-
-        if len(self.buffer) > 4:
-            feed_data = list(data_feed)  # ve have a list of dicts now
-
-            tal_ema = talib.EMA(np.asarray([float(i['close']) for i in feed_data]), timeperiod=self.n)
-
-            tal_ema = pd.Series(np.nan_to_num(tal_ema))
-
-            plot_df = pd.DataFrame(self.buffer)[['open_time', 'ema']].copy(deep=True)
-            plot_df['open_time'] = pd.to_datetime(plot_df['open_time'], unit='ms')
-            plot_df['talib'] = tal_ema
-            plot_df = plot_df.set_index('open_time')
-            plot_df = plot_df.astype('float')
-            plot_df = plot_df[4:]
-
-            ap = mpf.make_addplot(plot_df[['ema', 'talib']])
-
-            prepared = hlp.prepare_df_for_plotting(pd.DataFrame(feed_data))[4:]
-            mpf.plot(prepared, type='candle', addplot=ap)
+        self.buffer.append(self.ema_indicator.calculate_next(data_feed))
 
 
-            print(self.buffer[-1]['ema'])
-            print(list(tal_ema)[-1])
+

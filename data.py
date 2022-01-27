@@ -80,7 +80,12 @@ class HistoricDataHandler(DataHandler):
             self.continue_backtest = False
         keys = ['open_time', 'open', 'high', 'low', 'close', 'volume', 'close_time',
          'quote_vol', 'num_trades', 'buy_base_vol', 'buy_quote_vol']
-        return dict(zip(keys,new_raw_bar))
+        new_bar = dict(zip(keys,new_raw_bar))
+        if new_bar['open'] < 0:
+            print('missing bar detected!!!!!!!!!!=========================')
+            return None
+        else:
+            return new_bar
 
         # should think of something in case of recieving multiple bars while live trading
 
@@ -88,8 +93,12 @@ class HistoricDataHandler(DataHandler):
         """
         Pushes the latest bar to the buffered_data queue.
         """
-        self.buffered_data.append(self._pop_new_bar())
-        self.events.put(events.MarketEvent())
+        #  TODO: in live trading new data can be a bunch of canldes if
+        #   for example we download them after restoring lost connection to exchange
+        new_data = self._pop_new_bar()
+        if new_data:
+            self.buffered_data.append(new_data)
+            self.events.put(events.MarketEvent())
 
     def get_buffered_bars(self, N=1) -> list:
         """

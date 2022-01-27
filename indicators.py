@@ -8,7 +8,6 @@ import talib
 import helper_functions as hlp
 
 
-
 class Indicator(object):
     """
     Indicator is an abstract base class providing an interface for
@@ -18,7 +17,7 @@ class Indicator(object):
     __metaclass__ = ABCMeta
 
     @abstractmethod
-    def fill_buffer(self):
+    def calculate_next(self):
         """
         Provides the mechanisms to calculate the list of signals.
         """
@@ -30,43 +29,27 @@ class EMA(Indicator):
     Exponential moving average indicator
     """
 
-    def __init__(self, n, max_buffer_size):
+    def __init__(self, n):
         self.n = n
-        self.buffer = collections.deque(maxlen=max_buffer_size)
+        self.last_entry = None
 
-
-
-    def fill_buffer(self, data_feed: collections.deque) -> collections.deque:
-        # here we suppose that data_feed is indexed by time and uniform. Need to assert this.
-        data_feed = list(data_feed)  # ve have a list of dicts now
+    def calculate_next(self, data_feed: dict) -> collections.deque:
+        #  get newest candle, append ema values to self buffer
+        #  do I really need those bufers?
 
         alpha = 2 / (self.n + 1)
+        if self.last_entry:
+            ema = alpha * data_feed['close'] + (1 - alpha) * self.last_entry['ema']
 
-        if not self.buffer:
-            last = 0
         else:
-            last = self.buffer[-1]['open_time']
+            ema = data_feed['close']
 
-        #  most of the times data_feed is only 1 bar ahead, check it
-        if ((len(data_feed) >= 2 and len(self.buffer) >= 1) and
-                data_feed[-2]['open_time'] == self.buffer[-1]['open_time']):
-            ema = alpha * data_feed[-1]['close'] + (1 - alpha) * self.buffer[-1]['ema']
-            self.buffer.append({
-                'open_time': data_feed[-1]['open_time'],
-                'ema': ema
-            })
-        else:
-            #  self.buffer is more than 1 block behind data_feed, need to iterate
-            for bar in data_feed:
-                if bar['open_time'] > last:
-                    if last == 0:
-                        ema = bar['close']
-                    else:
-                        ema = alpha * bar['close'] + (1 - alpha) * self.buffer[-1]['ema']
-                    self.buffer.append({
-                        'open_time': bar['open_time'],
-                        'ema': ema
-                    })
+        self.last_entry = {
+            'open_time': data_feed['open_time'],
+            'ema': ema
+        }
+
+        return self.last_entry
 
 
 
