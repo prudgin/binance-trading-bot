@@ -8,6 +8,7 @@ import helper_functions as hlp
 import data
 import events
 import strategy
+import portfolio
 
 
 def plot_buffers(data_handler, ema_strategy):
@@ -26,15 +27,16 @@ def plot_buffers(data_handler, ema_strategy):
 
 
 events = queue.Queue()
+
 symbol = 'BTCUSDT'
 
-ema_strategy = strategy.EMAStrategy(events, symbol, 5, 10, max_buffer_size=20)
+ema_strategy = strategy.EMAStrategy(events, symbol, 2, 30, max_buffer_size=50)
 
 data_handler = data.HistoricDataHandler(events, symbol, '1h', start_ts=1543104000000,
-                                        end_ts=1543104000000 - 1 + 60000 * 60 * 20,
-                                        max_buffer_size=20)
+                                        end_ts=1543104000000 - 1 + 60000 * 60 * 200,
+                                        max_buffer_size=50)
 
-# portfolio = Portfolio(...)
+portfolio = portfolio.NaivePortfolio(events, symbol, initial_capital=10000)
 # broker = ExecutionHandler(...)
 
 
@@ -53,16 +55,16 @@ while True:
             break
 
         if event.type == 'MARKET':
-            ema_strategy.calculate_signals(data_handler.buffered_data[-1])
-
-            # portfolio.update_timeindex(event)  # Part V
+            ema_strategy.calculate_signals(event) # event fired by data_handler.update_bars(), contains new data
+            portfolio.update_timeindex(event)
 
         elif event.type == 'SIGNAL':
             plot_buffers(data_handler, ema_strategy)
-            pass
-            # portfolio.update_signal(event)  # Part V
+            portfolio.process_signal(event)  # puts an order event on the queue
 
         elif event.type == 'ORDER':
+
+            event.print_order()
             pass
             # broker.execute_ordder(event)
 

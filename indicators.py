@@ -34,7 +34,7 @@ class EMA(Indicator):
         self.last_entry = None
         self.name = 'ema' + str(self.n)
 
-    def calculate_next(self, data_feed: dict) -> collections.deque:
+    def calculate_next(self, data_feed: dict):
         #  get newest candle, append ema values to self buffer
         #  do I really need those bufers?
 

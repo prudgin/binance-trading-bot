@@ -12,11 +12,13 @@ class MarketEvent(Event):
     Handles the event of receiving new market data (bars).
     """
 
-    def __init__(self):
+    def __init__(self, new_data):
         """
         Initialises the MarketEvent.
+        new_data may be a dict or a list of dicts
         """
         self.type = 'MARKET'
+        self.new_data = new_data
 
 
 class SignalEvent(Event):
@@ -71,9 +73,8 @@ class OrderEvent(Event):
         """
         Outputs the values within the Order.
         """
-        print
-        "Order: Symbol=%s, Type=%s, Quantity=%s, Direction=%s" % \
-        (self.symbol, self.order_type, self.quantity, self.direction)
+        print(f'Order: type={self.order_type}, symbol={self.symbol}, '
+              f'quantity={self.quantity}, direction={self.direction}')
 
 
 class FillEvent(Event):

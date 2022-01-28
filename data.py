@@ -98,7 +98,7 @@ class HistoricDataHandler(DataHandler):
         new_data = self._pop_new_bar()
         if new_data:
             self.buffered_data.append(new_data)
-            self.events.put(events.MarketEvent())
+            self.events.put(events.MarketEvent(new_data))
 
     def get_buffered_bars(self, N=1) -> list:
         """

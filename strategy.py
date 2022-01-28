@@ -55,9 +55,11 @@ class EMAStrategy(Strategy):
         self.ema_fast = indicators.EMA(fast)
         self.ema_slow = indicators.EMA(slow)
 
-    def calculate_signals(self, data_feed: dict):
+    def calculate_signals(self, event: events.MarketEvent):
         #  TODO: in live trading data feed can be a bunch of canldes, not just one
         #   if for example we download them after restoring lost connection to exchange
+
+        data_feed = event.new_data
 
         slow_name = self.ema_slow.name
         fast_name = self.ema_fast.name
@@ -91,12 +93,12 @@ class EMAStrategy(Strategy):
                     self.state = -1
                     signal_fired = 'SHORT'
 
-            if signal_fired:
-                print(f'Fired a signal: {signal_fired}')
-                self.events.put(
-                    events.SignalEvent(
-                        self.symbol,
-                        int(time.time() * 1000),
-                        signal_fired
-                    )
+        if signal_fired:
+            print(f'Fired a signal: {signal_fired}')
+            self.events.put(
+                events.SignalEvent(
+                    self.symbol,
+                    int(time.time() * 1000),
+                    signal_fired
                 )
+            )
