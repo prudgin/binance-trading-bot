@@ -5,13 +5,13 @@ import time
 from decimal import Decimal
 
 import aiohttp
-import db_interact as db
-import exceptions
+from historical_data import db_interact as db
+from historical_data import exceptions
 import spooky
 from binance import exceptions as pybin_exceptions
 from binance.client import AsyncClient
-from helper_functions import interval_to_milliseconds, ts_to_date, generate_data, round_timings, round_data, \
-    get_data_gaps
+from historical_data.helper_functions import interval_to_milliseconds, ts_to_date, generate_data, round_timings,\
+    round_data, get_data_gaps
 
 logger = logging.getLogger(__name__)
 
@@ -44,7 +44,8 @@ def get_candles_from_db(symbol: str,
                         end_ts: int,
                         limit=500,
                         max_coroutines=10,
-                        reversed_order=True):
+                        reversed_order=True,
+                        delete_existing_table=False):
     """
     :param symbol:
     :param interval:
@@ -72,6 +73,10 @@ def get_candles_from_db(symbol: str,
     print(f'requested candles from {start_ts} {ts_to_date(start_ts)} to '
           f'{ts_to_date(end_ts)} {end_ts}')
 
+    time_now = int(time.time() * 1000)
+    if end_ts > time_now:
+        end_ts = time_now
+
     if end_ts < start_ts:
         logger.warning('interval between requested start an end dates < chart interval, abort')
         return None
@@ -89,12 +94,18 @@ def get_candles_from_db(symbol: str,
     except exceptions.SQLError:
         return None
 
-    #check if table present, else create
+
+    if conn_db.table_in_db(table_name) and delete_existing_table: #  table present and delete flag is on
+        conn_db.table_delete(table_name)
+
+    #  check if table present, else create
     if not conn_db.table_in_db(table_name):
         logger.debug(f'not found table {table_name}, creating one')
         if not conn_db.table_create(table_name, candle_table_structure):
             conn_db.close_connection()
             return None
+
+
 
     # get when last entry was added to the table, need this for printing report of how many candles were written
     # in case of error returns 0

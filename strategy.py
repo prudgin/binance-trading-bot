@@ -3,12 +3,6 @@ import math
 import collections
 import time
 
-import mplfinance as mpf
-import pandas as pd
-import numpy as np
-import talib
-
-import helper_functions as hlp
 import indicators
 import events
 
@@ -81,24 +75,24 @@ class EMAStrategy(Strategy):
 
             if prev_sign > 0 and curr_sign < 0:
                 self.state = -1
-                signal_fired = 'SHORT'
+                signal_fired = ['EXIT', 'SHORT']
             if prev_sign < 0 and curr_sign > 0:
                 self.state = 1
-                signal_fired = 'LONG'
+                signal_fired = ['EXIT', 'LONG']
             if prev_sign == 0:
                 if curr_sign > 0 and self.state <= 0:
                     self.state = 1
-                    signal_fired = 'LONG'
+                    signal_fired = ['EXIT', 'LONG']
                 if curr_sign < 0 and self.state >= 0:
                     self.state = -1
-                    signal_fired = 'SHORT'
+                    signal_fired = ['EXIT', 'SHORT']
 
         if signal_fired:
-            print(f'Fired a signal: {signal_fired}')
             self.events.put(
                 events.SignalEvent(
                     self.symbol,
-                    int(time.time() * 1000),
-                    signal_fired
+                    data_feed['close_time'],
+                    signal_fired,
+                    data_feed['close']
                 )
             )

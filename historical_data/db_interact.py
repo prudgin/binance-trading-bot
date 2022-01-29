@@ -1,8 +1,8 @@
 import logging
 
-import exceptions
+from historical_data import exceptions
 import mysql.connector as mysql_connector
-import helper_functions as helpers
+from historical_data import helper_functions as helpers
 
 logger = logging.getLogger(__name__)
 

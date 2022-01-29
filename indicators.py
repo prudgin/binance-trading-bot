@@ -1,11 +1,4 @@
 from abc import ABCMeta, abstractmethod
-import collections
-
-import pandas as pd
-import mplfinance as mpf
-import talib
-
-import helper_functions as hlp
 
 
 class Indicator(object):

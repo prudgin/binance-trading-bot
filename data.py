@@ -1,8 +1,6 @@
 from abc import ABCMeta, abstractmethod
-import decimal
 import collections
-import pandas as pd
-import get_hist_data as ghd
+from historical_data import get_hist_data as ghd
 import events
 
 class DataHandler(object):
@@ -42,7 +40,7 @@ class HistoricDataHandler(DataHandler):
     trading interface.
     """
 
-    def __init__(self, events, symbol, interval, start_ts, end_ts, max_buffer_size):
+    def __init__(self, events, symbol, interval, start_ts, end_ts, max_buffer_size, delete_previous_data=False):
         """
         Initialises the historic data handler.
         :param events: the events queue
@@ -58,6 +56,7 @@ class HistoricDataHandler(DataHandler):
         self.interval = interval
         self.start_ts = start_ts
         self.end_ts = end_ts
+        self.delete_prev_data = delete_previous_data
 
         self.historical_data = []
         self.buffered_data = collections.deque(maxlen=max_buffer_size)
@@ -66,7 +65,8 @@ class HistoricDataHandler(DataHandler):
 
     def load_historical_data(self):
         #  returns a list of tuples, each representing a candle, returned in desc order, so we can pop from list
-        self.historical_data = ghd.get_candles_from_db(self.symbol, self.interval, self.start_ts, self.end_ts)
+        self.historical_data = ghd.get_candles_from_db(self.symbol, self.interval, self.start_ts, self.end_ts,
+                                                       delete_existing_table=self.delete_prev_data)
         if not self.historical_data:
             self.continue_backtest = False
 

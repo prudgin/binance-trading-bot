@@ -5,9 +5,9 @@ import sys
 import gc
 import tracemalloc
 import time
-import get_hist_data as ghd  # aiohttp should be imported before mysql.connector
-import db_interact as db
-import helper_functions as hlp
+from historical_data import get_hist_data as ghd  # aiohttp should be imported before mysql.connector
+from historical_data import db_interact as db
+from historical_data import helper_functions as hlp
 
 import spooky
 
@@ -34,7 +34,7 @@ if __name__ == '__main__':
     conn_db.connect()
 
     # print(conn_db.list_databases())
-    conn_db.table_delete('BTCUSDT1dHist')
+    conn_db.table_delete('BTCUSDT1mHist')
 
     conn_db.close_connection()
 
