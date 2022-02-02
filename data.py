@@ -1,7 +1,11 @@
 from abc import ABCMeta, abstractmethod
 import collections
+import time
+
+import pandas as pd
 from historical_data import get_hist_data as ghd
 import events
+
 
 class DataHandler(object):
     """
@@ -17,7 +21,7 @@ class DataHandler(object):
     __metaclass__ = ABCMeta
 
     @abstractmethod
-    def get_buffered_bars(self, symbol, N=1):
+    def get_buffered_bars(self, symbol):
         """
         Returns the last N bars from the buffered_data queue,
         """
@@ -40,7 +44,7 @@ class HistoricDataHandler(DataHandler):
     trading interface.
     """
 
-    def __init__(self, events, symbol, interval, start_ts, end_ts, max_buffer_size, delete_previous_data=False):
+    def __init__(self, events, buffer, symbol, interval, start_ts, end_ts, delete_previous_data=False):
         """
         Initialises the historic data handler.
         :param events: the events queue
@@ -52,6 +56,7 @@ class HistoricDataHandler(DataHandler):
         """
 
         self.events = events
+        self.buffer = buffer
         self.symbol = symbol
         self.interval = interval
         self.start_ts = start_ts
@@ -59,7 +64,6 @@ class HistoricDataHandler(DataHandler):
         self.delete_prev_data = delete_previous_data
 
         self.historical_data = []
-        self.buffered_data = collections.deque(maxlen=max_buffer_size)
         self.continue_backtest = True
         self.load_historical_data()
 
@@ -79,8 +83,8 @@ class HistoricDataHandler(DataHandler):
         if not self.historical_data:
             self.continue_backtest = False
         keys = ['open_time', 'open', 'high', 'low', 'close', 'volume', 'close_time',
-         'quote_vol', 'num_trades', 'buy_base_vol', 'buy_quote_vol']
-        new_bar = dict(zip(keys,new_raw_bar))
+                'quote_vol', 'num_trades', 'buy_base_vol', 'buy_quote_vol']
+        new_bar = dict(zip(keys, new_raw_bar))
         if new_bar['open'] < 0:
             print('missing bar detected!!!!!!!!!!=========================')
             return None
@@ -97,14 +101,50 @@ class HistoricDataHandler(DataHandler):
         #   for example we download them after restoring lost connection to exchange
         new_data = self._pop_new_bar()
         if new_data:
-            self.buffered_data.append(new_data)
+            self.buffer.append_data(new_data)
             self.events.put(events.MarketEvent(new_data))
 
-    def get_buffered_bars(self, N=1) -> list:
+
+class DataBuffer():
+    """
+    This buffer is used to store data as a log during backtest run or live trading.
+    In case of live trading it should save itself to a file or database from time to time.
+    The buffer itself is a dict of dicts. Outer dict keys are timestamps, inner dicts contain the data.
+    """
+
+    def __init__(self, max_size=None):
         """
-        :return: list of dicts. the last N bars from the buffered_data queue
+        :param max_size: maximum length of buffer in MB?
         """
-        if len(self.buffered_data) >= N:
-            return list(self.buffered_data)[-N:]
+        self.buffer = [pd.DataFrame()]
+
+    def append_data(self, new_data: dict):
+        """
+        :param new_data: dict with timestamp key, named 'close_time' (time of closure of the last candle)
+        :return:
+        """
+        # TODO new_data can be a list of dicts
+        start = time.perf_counter()
+        new_data_time = new_data['close_time']
+        row_to_append = pd.DataFrame(new_data, index=[new_data_time])
+
+        if new_data_time in self.buffer.index:
+            #i = self.buffer.index.get_loc(new_data_time)
+            #if 'close_time' in self.buffer.columns: # check for timing collisions
+                #assert self.buffer['close_time'].iloc[i] == new_data_time, 'buffer timings collision'
+            self.buffer = row_to_append.combine_first(self.buffer)
+
         else:
-            return None
+            self.buffer = self.buffer.append(row_to_append)
+            print('append!')
+        print(f'append took: {time.perf_counter()-start}')
+
+    def get_len(self):
+        return len(self.buffer)
+
+    def get_last_item(self, index):  # -1 = last_item, -2 = next ot the last
+        return self.buffer.iloc[index].to_dict()
+
+
+
+

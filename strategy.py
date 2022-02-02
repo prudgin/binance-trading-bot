@@ -3,6 +3,7 @@ import math
 import collections
 import time
 
+import data
 import indicators
 import events
 
@@ -36,14 +37,14 @@ class EMAStrategy(Strategy):
     This is an extremely simple strategy
     """
 
-    def __init__(self, events, symbol, fast, slow, max_buffer_size):
+    def __init__(self, events, buffer: data.DataBuffer, symbol, fast, slow):
         """
         Initialises the EMA strategy.
         """
         self.threshold = 0  # TODO add threshold for how small ema difference should be treated as a signal
         self.symbol = symbol
         self.events = events
-        self.buffer = collections.deque(maxlen=max_buffer_size)
+        self.buffer = buffer
         self.state = 0  # are we long, short or out of market? [-1, 0, 1]
 
         self.ema_fast = indicators.EMA(fast)
@@ -60,16 +61,23 @@ class EMAStrategy(Strategy):
 
         self.ema_fast.calculate_next(data_feed)
         self.ema_slow.calculate_next(data_feed)
-        self.buffer.append({
-            'open_time': data_feed['open_time'],
+
+        self.buffer.append_data({
+            'close_time': data_feed['close_time'],
             fast_name: self.ema_fast.last_entry,
             slow_name: self.ema_slow.last_entry,
         })
+
         signal_fired = 0
         #  ema is an unstable function, so we can act only after the period of instability has passed
-        if len(self.buffer) > self.ema_slow.n:
-            curr_diff = self.buffer[-1][fast_name] - self.buffer[-1][slow_name]
-            prev_diff = self.buffer[-2][fast_name] - self.buffer[-2][slow_name]
+        if self.buffer.get_len() > self.ema_slow.n:
+
+            curr_data = self.buffer.get_last_item(-1)
+            prev_data = self.buffer.get_last_item(-2)
+
+            curr_diff = curr_data[fast_name] - curr_data[slow_name]
+            prev_diff = prev_data[fast_name] - prev_data[slow_name]
+
             sign = lambda x: math.copysign(1, x) if x else 0
             curr_sign, prev_sign = sign(curr_diff), sign(prev_diff)
 

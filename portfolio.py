@@ -43,7 +43,7 @@ class NaivePortfolio(Portfolio):
     used to test simpler strategies such as BuyAndHoldStrategy.
     """
 
-    def __init__(self, events, symbol, initial_capital, start_ts):
+    def __init__(self, events, buffer, symbol, initial_capital, start_ts):
         """
         Initialises the portfolio with bars and an event queue.
         Also includes a starting datetime index and initial capital
@@ -57,13 +57,11 @@ class NaivePortfolio(Portfolio):
         """
         self.symbol = symbol
         self.events = events
+        self.buffer = buffer
         self.start_date = start_ts
         self.initial_capital = initial_capital
 
-        self.current_position = {self.symbol: 0}
-
-        # TODO how big are those lists going to grow? Need to put a limit, or write into a database
-        self.all_positions = [{self.symbol: 0, 'datetime': self.start_date}]
+        self.current_position = {self.symbol: 0, 'price': 0}
 
         self.current_holdings = {
             self.symbol: 0,
@@ -72,13 +70,7 @@ class NaivePortfolio(Portfolio):
             'total': self.initial_capital
         }
 
-        self.all_holdings = [{
-            self.symbol: 0,
-            'datetime': self.start_date,
-            'cash': self.initial_capital,
-            'commission': 0,
-            'total': self.initial_capital
-        }]
+
 
     def update_timeindex(self, event: events.MarketEvent):
         """
@@ -95,10 +87,13 @@ class NaivePortfolio(Portfolio):
                 # TODO new_data can be a list of dicts!
         )
 
-        dict_to_append = copy.deepcopy(self.current_holdings)
-        # TODO new_data can be a list of dicts!
-        dict_to_append['datetime'] = new_data['close_time']
-        self.all_holdings.append(dict_to_append)
+        self.buffer.append_data({
+            'close_time' : new_data['close_time'],
+            self.symbol: self.current_holdings[self.symbol],
+            'cash': self.current_holdings['cash'],
+            'commission': self.current_holdings['commission'],
+            'total': self.current_holdings['total']
+        })
 
 
     def process_signal(self, event: events.SignalEvent):
@@ -127,7 +122,8 @@ class NaivePortfolio(Portfolio):
                 mkt_quantity -= self.current_holdings['total'] * 0.2 / event.last_close_price
 
         # mkt_quantity can be positive (byu) or negative (sell)
-        order_event = events.OrderEvent(self.symbol, event.datetime, order_type, mkt_quantity, event.last_close_price)
+        order_event = events.OrderEvent(self.symbol, event.bar_close_time,
+                                        order_type, mkt_quantity, event.last_close_price)
         self.events.put(order_event)
 
 
@@ -139,9 +135,7 @@ class NaivePortfolio(Portfolio):
         """
 
         self.current_position[event.symbol] += event.quantity
-        dict_to_append = copy.deepcopy(self.current_position)
-        dict_to_append['datetime'] = event.timeindex
-        self.all_positions.append(dict_to_append)
+        self.current_position['price'] = event.price_filled
 
         self.current_holdings[event.symbol] += event.quantity
         assert self.current_holdings[event.symbol] == self.current_position[event.symbol]
@@ -152,9 +146,13 @@ class NaivePortfolio(Portfolio):
         self.current_holdings['total'] = (self.current_holdings['cash'] +
                                           self.current_holdings[event.symbol] * event.price_filled)
 
-        dict_to_append = copy.deepcopy(self.current_holdings)
-        dict_to_append['datetime'] = event.timeindex
-        self.all_holdings.append(dict_to_append)
+        self.buffer.append_data({
+            'close_time': event.bar_close_time,
+            self.symbol: self.current_holdings[self.symbol],
+            'cash': self.current_holdings['cash'],
+            'commission': self.current_holdings['commission'],
+            'total': self.current_holdings['total']
+        })
 
 
 

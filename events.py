@@ -27,7 +27,7 @@ class SignalEvent(Event):
     This is received by a Portfolio object and acted upon.
     """
 
-    def __init__(self, symbol, datetime, signal: list, last_close_price):
+    def __init__(self, symbol, bar_close_time, signal: list, last_close_price):
         """
         Initialises the SignalEvent.
         Parameters:
@@ -38,7 +38,7 @@ class SignalEvent(Event):
 
         self.type = 'SIGNAL'
         self.symbol = symbol
-        self.datetime = datetime
+        self.bar_close_time = bar_close_time
         self.signal = signal
         self.last_close_price = last_close_price
 
@@ -87,7 +87,7 @@ class FillEvent(Event):
     the commission of the trade from the brokerage.
     """
 
-    def __init__(self, timeindex, symbol, exchange, quantity, price_filled, commission):
+    def __init__(self, time_executed, bar_close_time, symbol, exchange, quantity, price_filled, commission):
         """
         Initialises the FillEvent object. Sets the symbol, exchange,
         quantity, direction, cost of fill and an optional
@@ -107,7 +107,8 @@ class FillEvent(Event):
         """
 
         self.type = 'FILL'
-        self.timeindex = timeindex
+        self.time_executed = time_executed
+        self.bar_close_time = bar_close_time
         self.symbol = symbol
         self.exchange = exchange
         self.quantity = quantity

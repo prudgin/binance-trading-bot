@@ -66,11 +66,12 @@ class SimulatedExecutionHandler(ExecutionHandler):
         # TODO add slippage here
         price_filled = event.last_close_price
         time_executed = event.datetime
+        bar_close_time = event.datetime
 
         commission = (0.1/100) * abs(quantity) * price_filled
 
         # in case of live trading some magic has to be done here
         # if execution successsfull:
-        fill_event = events.FillEvent(time_executed, event.symbol,
+        fill_event = events.FillEvent(time_executed, bar_close_time, event.symbol,
                                'Binance', quantity, price_filled, commission)
         self.events.put(fill_event)
