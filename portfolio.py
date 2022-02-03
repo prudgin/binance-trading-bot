@@ -61,7 +61,7 @@ class NaivePortfolio(Portfolio):
         self.start_date = start_ts
         self.initial_capital = initial_capital
 
-        self.current_position = {self.symbol: 0, 'price': 0}
+        self.current_position = {self.symbol: 0}
 
         self.current_holdings = {
             self.symbol: 0,
@@ -69,8 +69,6 @@ class NaivePortfolio(Portfolio):
             'commission': 0,
             'total': self.initial_capital
         }
-
-
 
     def update_timeindex(self, event: events.MarketEvent):
         """
@@ -84,17 +82,16 @@ class NaivePortfolio(Portfolio):
         self.current_holdings['total'] = (
                 self.current_holdings['cash'] +
                 self.current_holdings[self.symbol] * new_data['close']
-                # TODO new_data can be a list of dicts!
+            # TODO new_data can be a list of dicts!
         )
 
         self.buffer.append_data({
-            'close_time' : new_data['close_time'],
+            'close_time': new_data['close_time'],
             self.symbol: self.current_holdings[self.symbol],
             'cash': self.current_holdings['cash'],
             'commission': self.current_holdings['commission'],
             'total': self.current_holdings['total']
         })
-
 
     def process_signal(self, event: events.SignalEvent):
         """
@@ -126,7 +123,6 @@ class NaivePortfolio(Portfolio):
                                         order_type, mkt_quantity, event.last_close_price)
         self.events.put(order_event)
 
-
     def update_fill(self, event: events.FillEvent):
         """
         Updates the portfolio current positions and holdings
@@ -135,7 +131,6 @@ class NaivePortfolio(Portfolio):
         """
 
         self.current_position[event.symbol] += event.quantity
-        self.current_position['price'] = event.price_filled
 
         self.current_holdings[event.symbol] += event.quantity
         assert self.current_holdings[event.symbol] == self.current_position[event.symbol]
@@ -149,10 +144,20 @@ class NaivePortfolio(Portfolio):
         self.buffer.append_data({
             'close_time': event.bar_close_time,
             self.symbol: self.current_holdings[self.symbol],
+            'price_filled': event.price_filled,
             'cash': self.current_holdings['cash'],
             'commission': self.current_holdings['commission'],
             'total': self.current_holdings['total']
         })
+
+        print(
+            f'bought:{round(event.quantity, 3)} {event.symbol}, '
+            f'have_now:{round(self.current_holdings[event.symbol], 3)}, '
+            f'total:{round(self.current_holdings["total"], 3)}, '
+            f'cash:{round(self.current_holdings["cash"])}, '
+            f'comm:{round(self.current_holdings["commission"])}, '
+            f'price:{round(event.price_filled, 2)}'
+        )
 
 
 

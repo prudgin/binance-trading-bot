@@ -3,6 +3,7 @@ import collections
 import time
 
 import pandas as pd
+import matplotlib.pyplot as plt
 from historical_data import get_hist_data as ghd
 import events
 
@@ -105,45 +106,7 @@ class HistoricDataHandler(DataHandler):
             self.events.put(events.MarketEvent(new_data))
 
 
-class DataBuffer():
-    """
-    This buffer is used to store data as a log during backtest run or live trading.
-    In case of live trading it should save itself to a file or database from time to time.
-    The buffer itself is a dict of dicts. Outer dict keys are timestamps, inner dicts contain the data.
-    """
 
-    def __init__(self, max_size=None):
-        """
-        :param max_size: maximum length of buffer in MB?
-        """
-        self.buffer = [pd.DataFrame()]
-
-    def append_data(self, new_data: dict):
-        """
-        :param new_data: dict with timestamp key, named 'close_time' (time of closure of the last candle)
-        :return:
-        """
-        # TODO new_data can be a list of dicts
-        start = time.perf_counter()
-        new_data_time = new_data['close_time']
-        row_to_append = pd.DataFrame(new_data, index=[new_data_time])
-
-        if new_data_time in self.buffer.index:
-            #i = self.buffer.index.get_loc(new_data_time)
-            #if 'close_time' in self.buffer.columns: # check for timing collisions
-                #assert self.buffer['close_time'].iloc[i] == new_data_time, 'buffer timings collision'
-            self.buffer = row_to_append.combine_first(self.buffer)
-
-        else:
-            self.buffer = self.buffer.append(row_to_append)
-            print('append!')
-        print(f'append took: {time.perf_counter()-start}')
-
-    def get_len(self):
-        return len(self.buffer)
-
-    def get_last_item(self, index):  # -1 = last_item, -2 = next ot the last
-        return self.buffer.iloc[index].to_dict()
 
 
 

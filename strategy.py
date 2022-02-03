@@ -6,6 +6,7 @@ import time
 import data
 import indicators
 import events
+import buffer
 
 
 class Strategy(object):
@@ -37,7 +38,7 @@ class EMAStrategy(Strategy):
     This is an extremely simple strategy
     """
 
-    def __init__(self, events, buffer: data.DataBuffer, symbol, fast, slow):
+    def __init__(self, events, buffer: buffer.DataBuffer, symbol, interval_ts, fast, slow):
         """
         Initialises the EMA strategy.
         """
@@ -45,10 +46,13 @@ class EMAStrategy(Strategy):
         self.symbol = symbol
         self.events = events
         self.buffer = buffer
+        self.interval_ts = interval_ts
         self.state = 0  # are we long, short or out of market? [-1, 0, 1]
 
         self.ema_fast = indicators.EMA(fast)
         self.ema_slow = indicators.EMA(slow)
+
+        self.buffer.feed_param_names(self.ema_slow.name, self.ema_fast.name)
 
     def calculate_signals(self, event: events.MarketEvent):
         #  TODO: in live trading data feed can be a bunch of canldes, not just one
@@ -72,8 +76,8 @@ class EMAStrategy(Strategy):
         #  ema is an unstable function, so we can act only after the period of instability has passed
         if self.buffer.get_len() > self.ema_slow.n:
 
-            curr_data = self.buffer.get_last_item(-1)
-            prev_data = self.buffer.get_last_item(-2)
+            curr_data = self.buffer.get_item_by_timestamp(data_feed['close_time'])
+            prev_data = self.buffer.get_item_by_timestamp(data_feed['close_time'] - self.interval_ts)
 
             curr_diff = curr_data[fast_name] - curr_data[slow_name]
             prev_diff = prev_data[fast_name] - prev_data[slow_name]
