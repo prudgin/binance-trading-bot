@@ -11,13 +11,14 @@ import buffer
 import strategy
 import portfolio
 import execution
+import performance
 
 
 events = queue.Queue()
 
-symbol = 'BTCUSDT'
-start_ts = hlp.date_to_milliseconds('01-Dec-2018 00:00:00')
-end_ts = hlp.date_to_milliseconds('01-Jan-2020 00:00:00')
+symbol = 'BNBUSDT'
+start_ts = hlp.date_to_milliseconds('01-Jan-2021 00:00:00')
+end_ts = hlp.date_to_milliseconds('01-Jan-2022 00:00:00')
 interval = '1d'
 interval_ts = hlp.interval_to_milliseconds(interval)
 
@@ -27,7 +28,7 @@ data_handler = data.HistoricDataHandler(events, buffer, symbol, interval,
 
 ema_strategy = strategy.EMAStrategy(events, buffer, symbol, interval_ts, 10, 50)
 
-portfolio = portfolio.NaivePortfolio(events, buffer, symbol, initial_capital=10000, start_ts=start_ts)
+portfolio = portfolio.NaivePortfolio(events, buffer, symbol, initial_capital=10000, bet_size=1, start_ts=start_ts)
 
 executor = execution.SimulatedExecutionHandler(events)
 
@@ -62,5 +63,6 @@ while True:
 
 
 buffer.draw()
+performance.create_sharpe_ratio(buffer, interval, 2)
 
 

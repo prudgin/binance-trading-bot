@@ -43,7 +43,7 @@ class NaivePortfolio(Portfolio):
     used to test simpler strategies such as BuyAndHoldStrategy.
     """
 
-    def __init__(self, events, buffer, symbol, initial_capital, start_ts):
+    def __init__(self, events, buffer, symbol, initial_capital, bet_size, start_ts):
         """
         Initialises the portfolio with bars and an event queue.
         Also includes a starting datetime index and initial capital
@@ -54,12 +54,14 @@ class NaivePortfolio(Portfolio):
         events - The Event Queue object.
         start_date - The start date (bar) of the portfolio.
         initial_capital - The starting capital in USD.
+        bet_size - part of available balance to put per trade
         """
         self.symbol = symbol
         self.events = events
         self.buffer = buffer
         self.start_date = start_ts
         self.initial_capital = initial_capital
+        self.bet_size = bet_size
 
         self.current_position = {self.symbol: 0}
 
@@ -112,11 +114,11 @@ class NaivePortfolio(Portfolio):
                     continue
                 mkt_quantity -= cur_quantity
             # TODO check if account balance ('cash') is sufficient to process the purchase
+            amount = self.current_holdings['total'] * self.bet_size / event.last_close_price
             if signal == 'LONG':
-                mkt_quantity += self.current_holdings['total'] * 0.2 / event.last_close_price
-
+                mkt_quantity += amount
             if signal == 'SHORT':
-                mkt_quantity -= self.current_holdings['total'] * 0.2 / event.last_close_price
+                mkt_quantity -= amount
 
         # mkt_quantity can be positive (byu) or negative (sell)
         order_event = events.OrderEvent(self.symbol, event.bar_close_time,
