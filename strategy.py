@@ -2,6 +2,7 @@ from abc import ABCMeta, abstractmethod
 import math
 import collections
 import time
+import queue
 
 import data
 import indicators
@@ -38,26 +39,27 @@ class EMAStrategy(Strategy):
     This is an extremely simple strategy
     """
 
-    def __init__(self, events, buffer: buffer.DataBuffer, symbol, interval_ts, fast, slow):
+    def __init__(self, interval_ts, fast: int, slow: int):
         """
         Initialises the EMA strategy.
         """
         self.threshold = 0  # TODO add threshold for how small ema difference should be treated as a signal
-        self.symbol = symbol
-        self.events = events
-        self.buffer = buffer
-        self.interval_ts = interval_ts
         self.state = 0  # are we long, short or out of market? [-1, 0, 1]
 
+        self.interval_ts = interval_ts
         self.ema_fast = indicators.EMA(fast)
         self.ema_slow = indicators.EMA(slow)
 
-        self.buffer.feed_param_names(self.ema_slow.name, self.ema_fast.name)
 
-    def calculate_signals(self, event: events.MarketEvent):
+    def calculate_signals(self,
+                          symbol: str,
+                          events_queue: queue.Queue(),
+                          event: events.MarketEvent,
+                          buffer: buffer.DataBuffer):
         #  TODO: in live trading data feed can be a bunch of canldes, not just one
         #   if for example we download them after restoring lost connection to exchange
 
+        buffer.feed_param_names(self.ema_slow.name, self.ema_fast.name)
         data_feed = event.new_data
 
         slow_name = self.ema_slow.name
@@ -66,7 +68,7 @@ class EMAStrategy(Strategy):
         self.ema_fast.calculate_next(data_feed)
         self.ema_slow.calculate_next(data_feed)
 
-        self.buffer.append_data({
+        buffer.append_data({
             'close_time': data_feed['close_time'],
             fast_name: self.ema_fast.last_entry,
             slow_name: self.ema_slow.last_entry,
@@ -74,10 +76,10 @@ class EMAStrategy(Strategy):
 
         signal_fired = 0
         #  ema is an unstable function, so we can act only after the period of instability has passed
-        if self.buffer.get_len() > self.ema_slow.n:
+        if buffer.get_len() > self.ema_slow.n:
 
-            curr_data = self.buffer.get_item_by_timestamp(data_feed['close_time'])
-            prev_data = self.buffer.get_item_by_timestamp(data_feed['close_time'] - self.interval_ts)
+            curr_data = buffer.get_item_by_timestamp(data_feed['close_time'])
+            prev_data = buffer.get_item_by_timestamp(data_feed['close_time'] - self.interval_ts)
 
             curr_diff = curr_data[fast_name] - curr_data[slow_name]
             prev_diff = prev_data[fast_name] - prev_data[slow_name]
@@ -100,9 +102,9 @@ class EMAStrategy(Strategy):
                     signal_fired = ['EXIT', 'SHORT']
 
         if signal_fired:
-            self.events.put(
+            events_queue.put(
                 events.SignalEvent(
-                    self.symbol,
+                    symbol,
                     data_feed['close_time'],
                     signal_fired,
                     data_feed['close']

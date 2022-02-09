@@ -10,6 +10,7 @@ from historical_data import get_hist_data as ghd
 import events
 import historical_data.helper_functions as hlp
 
+
 class DataBuffer():
     """
     This buffer is used to store data as a log during backtest run or live trading.
@@ -41,7 +42,6 @@ class DataBuffer():
         else:
             self.buffer[new_data_time] = new_data
 
-
     def get_len(self):
         return len(self.buffer)
 
@@ -54,6 +54,8 @@ class DataBuffer():
             return self.buffer[prev_timestamp]
 
     def get_all_data(self) -> pd.DataFrame:
+        if not len(self.buffer):
+            return None
         df = pd.DataFrame.from_dict(self.buffer, orient='index')
         df.index = pd.to_datetime(df.index, unit='ms')
         df['close_time'] = pd.to_datetime(df['close_time'], unit='ms')
@@ -62,29 +64,37 @@ class DataBuffer():
     def feed_param_names(self, *args):
         self.params = [str(i) for i in args]
 
-    def draw(self):
+    def draw(self, drawdown: pd.Series = None):
 
         cols_list = ['total', 'open', 'high', 'low', 'close', 'volume',
                      'price_filled', 'close_time', self.symbol, *self.params]
-        df = self.get_all_data()[cols_list]
+        df = self.get_all_data()
+        cols_list = [x for x in cols_list if x in df.columns]
+        df = df[cols_list]
 
-        df['up'] = df['price_filled'].loc[df[self.symbol] > 0]
-        df['down'] = df['price_filled'].loc[df[self.symbol] < 0]
+        apds = [mpf.make_addplot(df[self.params])]
 
-        apds = [mpf.make_addplot(df[self.params]),
+        if 'price_filled' in df.columns:
+            df['up'] = df['price_filled'].loc[df[self.symbol] > 0]
+            df['down'] = df['price_filled'].loc[df[self.symbol] < 0]
+
+            apds.extend([
                 mpf.make_addplot(df['up'], type='scatter', markersize=100, marker='^', color='green'),
                 mpf.make_addplot(df['down'], type='scatter', markersize=100, marker='v', color='red'),
-                mpf.make_addplot(df['total'], secondary_y=True, color='brown')
-        ]
+                mpf.make_addplot(df['total'], secondary_y=True, color='brown', ylabel='balance')
+            ])
+
+        if drawdown is not None:
+            df['drawdown'] = drawdown
+            apds.append(mpf.make_addplot(df['drawdown'], panel=2, ylabel='drawdown %'))
 
         fig, axlist = mpf.plot(
             df[['open', 'high', 'low', 'close', 'volume']],
             type='candle',
             volume=True,
-            addplot = apds,
+            addplot=apds,
             returnfig=True
         )
         axlist[1].legend(['balance total'])
-
 
         plt.show()
