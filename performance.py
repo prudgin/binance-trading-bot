@@ -26,6 +26,10 @@ def calculate_performance(buffer: buffer.DataBuffer, interval: str, riskless_ann
         print(f'data seem to be empty, no trading occured')
         return None
 
+    if 'price_filled' not in df.columns:
+        print('seems like no bargains were made, performance returning None')
+        return None
+
     df = df[['close_time', 'total']]
     df['total_prev'] = df['total'].shift(1)
     df['returns'] = (df['total'] - df['total_prev']) / df['total_prev']
@@ -56,12 +60,14 @@ def calculate_performance(buffer: buffer.DataBuffer, interval: str, riskless_ann
     max_drawdown = df["underwater"].min()
     max_drawdown_duration = max_duration
     test_duration = df.index[-1] - df.index[0]
+    annualised_total_return = 365 * total_return / test_duration.days
     drawdown_duration_percent = max_drawdown_duration/test_duration
 
     return {
         'mean_annual_return': mean_annual_return,
         'mean_annual_disc_return': mean_annual_disc_return,
         'total_return': total_return,
+        'annualised_total_return': annualised_total_return,
         'sharpe_ratio': sharpe_ratio,
         'max_drawdown': max_drawdown,
         'max_drawdown_duration': max_drawdown_duration,

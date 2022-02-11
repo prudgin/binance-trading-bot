@@ -9,7 +9,7 @@ from historical_data import db_interact as db
 from historical_data import exceptions
 import spooky
 from binance import exceptions as pybin_exceptions
-from binance.client import AsyncClient
+from binance.client import AsyncClient, Client
 from historical_data.helper_functions import interval_to_milliseconds, ts_to_date, generate_data, round_timings,\
     round_data, get_data_gaps
 
@@ -36,6 +36,9 @@ candle_table_structure = [
     ['ignored', 'DOUBLE(15,8)', ''],
     ['time_loaded', 'BIGINT']
 ]
+
+def get_first_timestamp(symbol: str, interval: str)->int:
+    return Client()._get_earliest_valid_timestamp(symbol=symbol, interval=interval)
 
 
 def get_candles_from_db(symbol: str,
@@ -73,11 +76,10 @@ def get_candles_from_db(symbol: str,
     print(f'requested candles from {start_ts} {ts_to_date(start_ts)} to '
           f'{ts_to_date(end_ts)} {end_ts}')
 
-    time_now = int(time.time() * 1000)
-    if end_ts > time_now:
-        end_ts = time_now
+    start_ts = max(start_ts, get_first_timestamp(symbol, interval))
+    end_ts = min(end_ts, int(time.time() * 1000))
 
-    if end_ts < start_ts:
+    if end_ts < start_ts: # if end_ts == start_ts, still one candle with open_time = start_ts will be returned
         logger.warning('interval between requested start an end dates < chart interval, abort')
         return None
     start_ts, end_ts = round_timings(start_ts, end_ts, interval_ms)

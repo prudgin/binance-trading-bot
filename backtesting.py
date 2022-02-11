@@ -19,7 +19,7 @@ class BackTester():
     A class to run an event driven backtester with given parameters
     """
     def __init__(self, strategy: strategy.Strategy,
-                 symbol: str, interval: str, start: str, end: str,
+                 symbol: str, interval: str,
                  initial_capital=10000, bet_size=1):
         """
         :param strategy: the strategy to be tested
@@ -32,20 +32,36 @@ class BackTester():
         """
         self.symbol = symbol
         self.interval = interval
-        self.start = start
-        self.end = end
+
         self.initial_capital = initial_capital
         self.bet_size = bet_size
         self.strategy = strategy
-        self.start_ts = hlp.date_to_milliseconds(start)
-        self.end_ts = hlp.date_to_milliseconds(end)
+
         self.interval_ts = hlp.interval_to_milliseconds(interval)
 
-    def run_test(self, draw=False, print_results=True):
+    def run_test(self, start: str, end: str, draw=False, print_results=True, imported_data=False):
+        """
+        :param start:
+        :param end:
+        :param draw:
+        :param print_results:
+        :param imported_data_data: you can initialise backtester with historical data in case you have it. Otherwise data
+        will be downloaded.
+        :return:
+        """
+
+        self.start = start
+        self.end = end
+        self.start_ts = hlp.date_to_milliseconds(start)
+        self.end_ts = hlp.date_to_milliseconds(end)
+
         events = queue.Queue()
         buffer = buffer_module.DataBuffer(self.symbol)
+
         data_handler = data.HistoricDataHandler(events, buffer, self.symbol, self.interval,
-                                                self.start_ts, self.end_ts, delete_previous_data=False)
+                                                self.start_ts, self.end_ts, delete_previous_data=False,
+                                                imported_data=imported_data)
+
 
         portfolio = portfolio_module.NaivePortfolio(events, buffer, self.symbol,
                                              initial_capital=self.initial_capital,
@@ -79,7 +95,7 @@ class BackTester():
                     executor.execute_order(event)
 
                 elif event.type == 'FILL':
-                    portfolio.update_fill(event)
+                    portfolio.update_fill(event, verbose=False)
 
 
         backtest_results = performance.calculate_performance(buffer, self.interval, 2)
@@ -89,6 +105,7 @@ class BackTester():
                 print(f'mean annual return: {round(backtest_results["mean_annual_return"])}%')
                 print(f'mean annual disc return: {round(backtest_results["mean_annual_disc_return"])}%')
                 print(f'total return: {round(backtest_results["total_return"])}%')
+                print(f'annualised total return: {round(backtest_results["annualised_total_return"])}%')
                 print(f'Sharpe ratio: {round(backtest_results["sharpe_ratio"], 2)}')
                 print(f'max drawdawn: {round(backtest_results["max_drawdown"])}%')
                 print(f'max drawdawn duration: {backtest_results["max_drawdown_duration"]}')

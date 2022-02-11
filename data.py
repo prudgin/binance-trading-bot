@@ -45,7 +45,8 @@ class HistoricDataHandler(DataHandler):
     trading interface.
     """
 
-    def __init__(self, events, buffer, symbol, interval, start_ts, end_ts, delete_previous_data=False):
+    def __init__(self, events, buffer, symbol, interval, start_ts, end_ts, delete_previous_data=False,
+                 imported_data=False):
         """
         Initialises the historic data handler.
         :param events: the events queue
@@ -54,6 +55,7 @@ class HistoricDataHandler(DataHandler):
         :param start_ts: backtester start timestamp
         :param end_ts: backtester stop timestamp
         :param latest_data_maxlen: max length of latest_symbol_data, where we append new candles
+        :param import_data: download or import data
         """
 
         self.events = events
@@ -66,12 +68,25 @@ class HistoricDataHandler(DataHandler):
 
         self.historical_data = []
         self.continue_backtest = True
-        self.load_historical_data()
+
+        if imported_data:
+            self.import_historical_data(imported_data)
+        else:
+            self.load_historical_data()
 
     def load_historical_data(self):
         #  returns a list of tuples, each representing a candle, returned in desc order, so we can pop from list
         self.historical_data = ghd.get_candles_from_db(self.symbol, self.interval, self.start_ts, self.end_ts,
                                                        delete_existing_table=self.delete_prev_data)
+        if not self.historical_data:
+            self.continue_backtest = False
+
+    def import_historical_data(self, data: list):
+        """
+        :param data: a list of tuples, each representing a candle, organised in desc order, so we can pop from list
+        :return:
+        """
+        self.historical_data = data
         if not self.historical_data:
             self.continue_backtest = False
 
@@ -87,7 +102,7 @@ class HistoricDataHandler(DataHandler):
                 'quote_vol', 'num_trades', 'buy_base_vol', 'buy_quote_vol']
         new_bar = dict(zip(keys, new_raw_bar))
         if new_bar['open'] < 0:
-            print('missing bar detected!!!!!!!!!!=========================')
+            #print('missing bar detected!!!!!!!!!!=========================')
             return None
         else:
             return new_bar

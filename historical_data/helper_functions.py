@@ -10,6 +10,22 @@ import pandas as pd
 logger = logging.getLogger(__name__)
 
 
+def span_to_list(span: tuple, n_points) -> list:
+    """
+    transforms a range(span) into a list of n points evenly distributed within the range
+    :param span: the range like (0, 10), both ends included
+    :param n_points: number of points
+    :return: list of points
+    >>> span_to_list((0, 10), 5)
+    [0, 2, 5, 8, 10]
+    """
+    point_list = [span[0]]
+    section_len = (span[1] - span[0])/(n_points - 1)
+    for i in range(n_points - 1):
+        point_list.append(point_list[-1] + section_len)
+    return [round(x) for x in point_list]
+
+
 def prepare_df_for_plotting(df: pd.DataFrame):
     """
     copies an existing df!!!

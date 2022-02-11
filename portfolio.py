@@ -125,7 +125,9 @@ class NaivePortfolio(Portfolio):
                                         order_type, mkt_quantity, event.last_close_price)
         self.events.put(order_event)
 
-    def update_fill(self, event: events.FillEvent):
+
+
+    def update_fill(self, event: events.FillEvent, verbose=True):
         """
         Updates the portfolio current positions and holdings
         from a FillEvent.
@@ -152,14 +154,15 @@ class NaivePortfolio(Portfolio):
             'total': self.current_holdings['total']
         })
 
-        print(
-            f'bought:{round(event.quantity, 3)} {event.symbol}, '
-            f'have_now:{round(self.current_holdings[event.symbol], 3)}, '
-            f'total:{round(self.current_holdings["total"], 3)}, '
-            f'cash:{round(self.current_holdings["cash"])}, '
-            f'comm:{round(self.current_holdings["commission"])}, '
-            f'price:{round(event.price_filled, 2)}'
-        )
+        if verbose:
+            print(
+                f'bought:{round(event.quantity, 3)} {event.symbol}, '
+                f'have_now:{round(self.current_holdings[event.symbol], 3)}, '
+                f'total:{round(self.current_holdings["total"], 3)}, '
+                f'cash:{round(self.current_holdings["cash"])}, '
+                f'comm:{round(self.current_holdings["commission"])}, '
+                f'price:{round(event.price_filled, 2)}'
+            )
 
 
 
