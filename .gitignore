@@ -1,3 +1,4 @@
 .idea/*
 __pycache__/*
 historical_data/__pycache__/*
+opt.csv

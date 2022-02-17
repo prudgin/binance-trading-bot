@@ -78,13 +78,12 @@ class DataBuffer():
             df['up'] = df['price_filled'].loc[df[self.symbol] > 0]
             df['down'] = df['price_filled'].loc[df[self.symbol] < 0]
 
-            print(df[['up', 'down', 'price_filled']].notna())
-
-            apds.extend([
-                #mpf.make_addplot(df['up'], type='scatter', markersize=100, marker='^', color='green'),
-                mpf.make_addplot(df['down'], type='scatter', markersize=100, marker='v', color='red'),
-                mpf.make_addplot(df['total'], secondary_y=True, color='brown', ylabel='balance')
-            ])
+            if df['up'].notna().any():
+                apds.append(mpf.make_addplot(df['up'], type='scatter', markersize=100, marker='^', color='green'))
+            if df['down'].notna().any():
+                apds.append(mpf.make_addplot(df['down'], type='scatter', markersize=100, marker='v', color='red'))
+            if df['total'].notna().any():
+                apds.append(mpf.make_addplot(df['total'], secondary_y=True, color='brown', ylabel='balance'))
 
         if drawdown is not None:
             df['drawdown'] = drawdown

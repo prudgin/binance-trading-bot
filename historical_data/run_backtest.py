@@ -4,15 +4,15 @@ import optimization
 
 import historical_data.helper_functions as hlp
 
-symbol = 'SOLUSDT'
+symbol = 'BTCUSDT'
 interval = '1d'
-start = '01-Mar-2019 00:00:00'
+start = '01-Jan-2017 00:00:00'
 end = '30-Mar-2022 00:00:00'
 
 interval_ts = hlp.interval_to_milliseconds(interval)
 
 
-ema_strategy = strategy.EMAStrategy(interval_ts, 50, 234)
+ema_strategy = strategy.EMAStrategy(interval_ts, 10, 50)
 
 backtester = backtesting.BackTester(ema_strategy, symbol, interval)
 
