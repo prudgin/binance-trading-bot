@@ -34,9 +34,10 @@ if __name__ == '__main__':
     conn_db.connect()
 
     # print(conn_db.list_databases())
-    conn_db.table_delete('BTCUSDT1mHist')
+    #conn_db.table_delete('BTCUSDT1mHist')
 
     conn_db.close_connection()
+
 
     # 1502668800000 default start
     # end_ts = int(time.time() * 1000) = now
@@ -46,16 +47,13 @@ if __name__ == '__main__':
 
     tracemalloc.start()
 
-    fetch = ghd.get_candles_from_db('BTCUSDT', '1d', start_ts=1543104000000,
-                                    end_ts=1543104000000 - 1 + 60000 * 60 * 10)
+    fetch = ghd.get_candles_from_db('BTCUSDT', '1m', start_ts=1543104000000,
+                                    end_ts=1543104000000 - 1 + 60000 * 60 * 1000)
     for candle in fetch:
-        print(f'id: {candle[0]}; '
-              f'open: {hlp.ts_to_date(candle[1])}; '
-              f'closed: {hlp.ts_to_date(candle[7])}; '
-              f'len: {round((candle[7] - candle[1]) / (1000 * 60 * 60 * 24))}; '
-              f'added: {hlp.ts_to_date(candle[-1])}')
-        print(candle)
-        print(type(candle))
+        print(f'open time: {hlp.ts_to_date(candle[0])};'
+              f'close time: {hlp.ts_to_date(candle[6])}; '
+              f'len: {round((candle[6] - candle[0]) / (1000 * 60 * 60 * 24))}; ')
+
 
     # del fetched_candles
     # gc.collect()
@@ -65,3 +63,5 @@ if __name__ == '__main__':
     tracemalloc.stop()
 
     print(f'it took {time.perf_counter() - start}')
+    
+

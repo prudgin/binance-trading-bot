@@ -143,10 +143,10 @@ def get_candles_from_db(symbol: str,
 
     #  ok, we tried to get data from exchange, now just fetch from database:
     logger.debug('reading from db: conn_db.read()')
-    fetch = None
     fetch = conn_db.read(table_name, start_ts, end_ts, reversed_order=reversed_order)
     if fetch:
         print(f'fetched {len(fetch)} candles from the database')
+
     try:
         conn_db.close_connection()
     except exceptions.SQLError:
@@ -262,10 +262,9 @@ async def write_candles(start_ts, end_ts, client, symbol, interval,
     if temp_data is None or not len(temp_data):
         return (None, timeout_gap)
     else:
-        try:
-            conn_db.write(temp_data, table_name, candle_table_structure)
+        if conn_db.write(temp_data, table_name, candle_table_structure):
             return (True, timeout_gap)
-        except exceptions.SQLError:
+        else:
             return (None, timeout_gap)
 
 
@@ -423,10 +422,9 @@ def get_limit_intervals(start_ts, end_ts, interval_ms, limit):
 
 def get_gaps(conn_db, table_name, interval_ms, start_ts, end_ts, time_col_name='open_time'):
     logger.debug('start get_gaps')
-    try:
-        gaps = conn_db.get_missing(table_name, interval_ms, start_ts, end_ts)
-    except exceptions.SQLError:
-        return None
+
+    gaps = conn_db.get_missing(table_name, interval_ms, start_ts, end_ts)
+
     if not gaps and gaps is not None: #if we got an empty list but not a None
         print('all requested data already present in database, no gaps found')
     logger.debug('end get_gaps')
