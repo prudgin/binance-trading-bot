@@ -125,8 +125,6 @@ class NaivePortfolio(Portfolio):
                                         order_type, mkt_quantity, event.last_close_price)
         self.events.put(order_event)
 
-
-
     def update_fill(self, event: events.FillEvent, verbose=True):
         """
         Updates the portfolio current positions and holdings
@@ -163,6 +161,3 @@ class NaivePortfolio(Portfolio):
                 f'comm:{round(self.current_holdings["commission"])}, '
                 f'price:{round(event.price_filled, 2)}'
             )
-
-
-

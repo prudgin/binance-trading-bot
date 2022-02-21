@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 import time
 from datetime import timedelta
 
-from historical_data import helper_functions as hlp
+import btb_helpers as hlp
 import data
 import buffer as buffer_module
 import strategy
@@ -98,7 +98,8 @@ class BackTester():
                     portfolio.update_fill(event, verbose=False)
 
 
-        backtest_results = performance.calculate_performance(buffer, self.interval, 2)
+        backtest_results = performance.calculate_performance(buffer, self.interval, draw=draw)
+
         if backtest_results is not None:
             # print results:
             if print_results:
@@ -113,8 +114,6 @@ class BackTester():
                 print(f'max drawdown duration: '
                       f'{round(backtest_results["drawdown_duration_percent"]*100)}%')
                 print(f'backtest run for {timedelta(milliseconds=self.end_ts - self.start_ts)}')
-            # plotiing:
-            if draw:
-                buffer.draw(backtest_results['drawdown_df'])
+
 
         return backtest_results

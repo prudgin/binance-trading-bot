@@ -4,7 +4,8 @@ import time
 
 import pandas as pd
 import matplotlib.pyplot as plt
-from historical_data import get_hist_data as ghd
+import spooky
+from binance_sql import historical_data as ghd
 import events
 
 
@@ -76,8 +77,18 @@ class HistoricDataHandler(DataHandler):
 
     def load_historical_data(self):
         #  returns a list of tuples, each representing a candle, returned in desc order, so we can pop from list
-        self.historical_data = ghd.get_candles_from_db(self.symbol, self.interval, self.start_ts, self.end_ts,
-                                                       delete_existing_table=self.delete_prev_data)
+
+        conn_creds = {
+            'host': spooky.creds['host'],
+            'user': spooky.creds['user'],
+            'password': spooky.creds['password'],
+            'database': spooky.creds['database']
+        }
+        candle_getter = ghd.data_manager(self.symbol, self.interval)
+        candle_getter.set_database_credentials(**conn_creds)
+        self.historical_data = candle_getter.get_candles(start_ts=self.start_ts, end_ts=self.end_ts,
+                                                         delete_existing_table=self.delete_prev_data,
+                                                         reversed_order=True)
         if not self.historical_data:
             self.continue_backtest = False
 
@@ -102,7 +113,7 @@ class HistoricDataHandler(DataHandler):
                 'quote_vol', 'num_trades', 'buy_base_vol', 'buy_quote_vol']
         new_bar = dict(zip(keys, new_raw_bar))
         if new_bar['open'] < 0:
-            #print('missing bar detected!!!!!!!!!!=========================')
+            # print('missing bar detected!!!!!!!!!!=========================')
             return None
         else:
             return new_bar
@@ -119,10 +130,3 @@ class HistoricDataHandler(DataHandler):
         if new_data:
             self.buffer.append_data(new_data)
             self.events.put(events.MarketEvent(new_data))
-
-
-
-
-
-
-

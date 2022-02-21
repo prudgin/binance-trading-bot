@@ -9,7 +9,7 @@ from sklearn.manifold import TSNE
 import strategy
 import backtesting
 import optimization
-import historical_data.helper_functions as hlp
+
 
 
 
@@ -23,9 +23,9 @@ ema_strategy = strategy.EMAStrategy
 
 optimizer = optimization.Optimizer(symbol, interval)
 
-param_ranges = {'fast': (1, 50), 'slow': (10, 100)}
+param_ranges = {'fast': (1, 100), 'slow': (10, 250)}
 
-optimizer_results = optimizer.optimize_ema(ema_strategy, start, end, param_ranges, n_points=10)
+optimizer_results = optimizer.optimize_ema(ema_strategy, start, end, param_ranges, n_points=20)
 optimizer_results = pd.DataFrame(optimizer_results)
 
 optimizer_results.to_csv('opt.csv', index=False)

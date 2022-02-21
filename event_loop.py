@@ -63,7 +63,7 @@ while True:
             portfolio.update_fill(event)
 
 
-backtest_results = performance.calculate_performance(buffer, interval, 2)
+backtest_results = performance.calculate_performance(buffer, interval)
 
 # print results:
 print(f'mean annual return: {round(backtest_results["mean_annual_return"])}%')

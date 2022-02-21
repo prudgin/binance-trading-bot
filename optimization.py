@@ -8,8 +8,9 @@ import seaborn as sns
 import strategy
 import backtesting
 
-from historical_data import get_hist_data as ghd
-import historical_data.helper_functions as hlp
+import spooky
+from binance_sql import historical_data as ghd
+import btb_helpers as hlp
 
 
 class Optimizer():
@@ -24,8 +25,18 @@ class Optimizer():
         self.start_ts = hlp.date_to_milliseconds(start)
         self.end_ts = hlp.date_to_milliseconds(end)
 
-        self.candlestick_data = ghd.get_candles_from_db(self.symbol, self.interval, self.start_ts, self.end_ts,
-                                                        delete_existing_table=False)
+
+        conn_creds = {
+            'host': spooky.creds['host'],
+            'user': spooky.creds['user'],
+            'password': spooky.creds['password'],
+            'database': spooky.creds['database']
+        }
+        candle_getter = ghd.data_manager(self.symbol, self.interval)
+        candle_getter.set_database_credentials(**conn_creds)
+        self.candlestick_data = candle_getter.get_candles(start_ts=self.start_ts, end_ts=self.end_ts,
+                                                         delete_existing_table=False,
+                                                         reversed_order=True)
 
         # transforms a param_ranges dict like {'fast' : (5, 50), 'slow' : (10, 200)} into a dict like:
         # {'fast' : [5, 16, 28, 39, 50], 'slow' : [10, 58, 105, 152, 200]}

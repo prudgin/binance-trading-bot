@@ -6,9 +6,7 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import mplfinance as mpf
-from historical_data import get_hist_data as ghd
 import events
-import historical_data.helper_functions as hlp
 
 
 class DataBuffer():
@@ -61,41 +59,11 @@ class DataBuffer():
         df['close_time'] = pd.to_datetime(df['close_time'], unit='ms')
         return df
 
+    def get_params(self):
+        return self.params
+
+    def get_symbol(self):
+        return self.symbol
+
     def feed_param_names(self, *args):
         self.params = [str(i) for i in args]
-
-    def draw(self, drawdown: pd.Series = None):
-
-        cols_list = ['total', 'open', 'high', 'low', 'close', 'volume',
-                     'price_filled', 'close_time', self.symbol, *self.params]
-        df = self.get_all_data()
-        cols_list = [x for x in cols_list if x in df.columns]
-        df = df[cols_list]
-
-        apds = [mpf.make_addplot(df[self.params])]
-
-        if 'price_filled' in df.columns:
-            df['up'] = df['price_filled'].loc[df[self.symbol] > 0]
-            df['down'] = df['price_filled'].loc[df[self.symbol] < 0]
-
-            if df['up'].notna().any():
-                apds.append(mpf.make_addplot(df['up'], type='scatter', markersize=100, marker='^', color='green'))
-            if df['down'].notna().any():
-                apds.append(mpf.make_addplot(df['down'], type='scatter', markersize=100, marker='v', color='red'))
-            if df['total'].notna().any():
-                apds.append(mpf.make_addplot(df['total'], secondary_y=True, color='brown', ylabel='balance'))
-
-        if drawdown is not None:
-            df['drawdown'] = drawdown
-            apds.append(mpf.make_addplot(df['drawdown'], panel=2, ylabel='drawdown %'))
-
-        fig, axlist = mpf.plot(
-            df[['open', 'high', 'low', 'close', 'volume']],
-            type='candle',
-            volume=True,
-            addplot=apds,
-            returnfig=True
-        )
-        axlist[1].legend(['balance total'])
-
-        plt.show()
