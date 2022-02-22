@@ -98,22 +98,11 @@ class BackTester():
                     portfolio.update_fill(event, verbose=False)
 
 
-        backtest_results = performance.calculate_performance(buffer, self.interval, draw=draw)
-
-        if backtest_results is not None:
-            # print results:
-            if print_results:
-                print(f'mean annual return: {round(backtest_results["mean_annual_return"])}%')
-                print(f'mean annual disc return: {round(backtest_results["mean_annual_disc_return"])}%')
-                print(f'total return: {round(backtest_results["total_return"])}%')
-                print(f'annualised total return: {round(backtest_results["annualised_total_return"])}%')
-                print(f'Sharpe ratio: {round(backtest_results["sharpe_ratio"], 2)}')
-                print(f'max drawdawn: {round(backtest_results["max_drawdown"])}%')
-                print(f'max drawdawn duration: {backtest_results["max_drawdown_duration"]}')
-                print(f'test duration: {backtest_results["test_duration"]}')
-                print(f'max drawdown duration: '
-                      f'{round(backtest_results["drawdown_duration_percent"]*100)}%')
-                print(f'backtest run for {timedelta(milliseconds=self.end_ts - self.start_ts)}')
+        backtest_results = performance.calculate_performance(buffer=buffer,
+                                                             interval=self.interval,
+                                                             initial_capital=self.initial_capital,
+                                                             draw=draw,
+                                                             print_results=print_results)
 
 
         return backtest_results

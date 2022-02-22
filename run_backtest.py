@@ -1,9 +1,24 @@
 import pandas as pd
+import logging
+import sys
+
 import strategy
 import backtesting
 import optimization
 
+
 import btb_helpers as hlp
+
+logging.basicConfig(
+    format="%(asctime)s %(levelname)s:%(name)s: %(message)s",
+    level=logging.WARNING,
+    datefmt="%H:%M:%S",
+    stream=sys.stderr
+)
+
+logger = logging.getLogger(__name__)
+
+
 
 symbol = 'BTCUSDT'
 interval = '1d'
